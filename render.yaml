@@ -4,7 +4,7 @@ services:
     env: python
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && mkdir -p /mnt/data && cp *.xlsx /mnt/data/ 2>/dev/null || true
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     pythonVersion: "3.12.10"
     envVars:
