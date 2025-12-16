@@ -6,3 +6,5 @@ python-multipart==0.0.6
 Pillow==10.1.0
 python-dotenv==1.0.0
 numpy==1.26.4
+aiofiles==23.2.1
+gunicorn==21.2.0
