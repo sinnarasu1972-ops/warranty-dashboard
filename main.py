@@ -59,6 +59,36 @@ else:
         print(f"\n⚠️  Error creating {DATA_DIR}: {e}")
         DATA_DIR = './data'
     print(f"\n💻 LOCAL DEVELOPMENT - Using: {DATA_DIR}")
+# ==================== AUTO-COPY EXCEL FILES ON STARTUP ====================
+
+def copy_excel_files_on_startup():
+    """Copy Excel files from current directory to data directory on startup"""
+    if IS_RENDER:
+        try:
+            print("\n🔄 Checking for Excel files to copy to data directory...")
+            
+            # Find all .xlsx files in current directory
+            excel_files = glob.glob("*.xlsx")
+            
+            if excel_files:
+                print(f"✓ Found {len(excel_files)} Excel files to copy:")
+                for file in excel_files:
+                    src = file
+                    dst = os.path.join(DATA_DIR, file)
+                    try:
+                        shutil.copy2(src, dst)
+                        print(f"  ✓ Copied: {file} → {dst}")
+                    except Exception as e:
+                        print(f"  ✗ Failed to copy {file}: {e}")
+            else:
+                print("⚠️  No Excel files found in current directory")
+        except Exception as e:
+            print(f"⚠️  Error checking/copying Excel files: {e}")
+            import traceback
+            traceback.print_exc()
+
+# Call this function on startup
+copy_excel_files_on_startup()    
 
 # Dynamic file paths (cross-platform)
 WARRANTY_FILE = os.path.join(DATA_DIR, 'Warranty Debit.xlsx')
