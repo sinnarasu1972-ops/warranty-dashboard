@@ -32,13 +32,14 @@ IS_RENDER = os.getenv('RENDER', 'false').lower() == 'true'
 
 # Define base data directory
 if IS_RENDER:
-    # Use /tmp for temporary storage on Render, or mount persistent disk
-    DATA_DIR = os.getenv('DATA_DIR', '/tmp/warranty_data')
+    # Use Render's persistent disk mount
+    DATA_DIR = os.getenv('DATA_DIR', '/mnt/data')
     os.makedirs(DATA_DIR, exist_ok=True)
     print(f"\n🌐 RENDER ENVIRONMENT DETECTED - Using: {DATA_DIR}")
 else:
-    # Local development paths - use Windows path
-    DATA_DIR = os.getenv('DATA_DIR', r'D:\Power BI New\Warranty Debit')
+    # Local development paths - use environment variable or current directory
+    DATA_DIR = os.getenv('DATA_DIR', './data')
+    os.makedirs(DATA_DIR, exist_ok=True)
     print(f"\n💻 LOCAL DEVELOPMENT - Using: {DATA_DIR}")
 
 # Dynamic file paths (cross-platform)
