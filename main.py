@@ -34,12 +34,25 @@ IS_RENDER = os.getenv('RENDER', 'false').lower() == 'true'
 if IS_RENDER:
     # Use Render's persistent disk mount
     DATA_DIR = os.getenv('DATA_DIR', '/mnt/data')
-    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except PermissionError:
+        print(f"\n⚠️  Permission denied for {DATA_DIR}, using /tmp instead")
+        DATA_DIR = '/tmp/warranty_data'
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception as e:
+        print(f"\n⚠️  Error creating directory: {e}")
+        DATA_DIR = '/tmp/warranty_data'
+        os.makedirs(DATA_DIR, exist_ok=True)
     print(f"\n🌐 RENDER ENVIRONMENT DETECTED - Using: {DATA_DIR}")
 else:
     # Local development paths - use environment variable or current directory
     DATA_DIR = os.getenv('DATA_DIR', './data')
-    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception as e:
+        print(f"\n⚠️  Error creating {DATA_DIR}: {e}")
+        DATA_DIR = './data'
     print(f"\n💻 LOCAL DEVELOPMENT - Using: {DATA_DIR}")
 
 # Dynamic file paths (cross-platform)
