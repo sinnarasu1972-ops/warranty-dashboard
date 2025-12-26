@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException, Cookie
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse, StreamingResponse
 import os
 import socket
@@ -23,9 +23,6 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from dotenv import load_dotenv
 import shutil
 import glob
-
-
-# ==================== CONFIGURATION FOR RENDER DEPLOYMENT ====================
 
 
 # ==================== CONFIGURATION FOR RENDER DEPLOYMENT ====================
@@ -59,6 +56,7 @@ else:
         print(f"\n⚠️  Error creating {DATA_DIR}: {e}")
         DATA_DIR = './data'
     print(f"\n💻 LOCAL DEVELOPMENT - Using: {DATA_DIR}")
+
 # ==================== AUTO-COPY EXCEL FILES ON STARTUP ====================
 
 def copy_excel_files_on_startup():
@@ -608,439 +606,6 @@ print("Loading Mahindra vehicle images...")
 MAHINDRA_IMAGES = get_mahindra_images()
 print(f" Loaded {len(MAHINDRA_IMAGES)} vehicle images\n")
 
-# ==================== AUTHENTICATION SETUP ====================
-
-def update_user_password_in_excel(user_id: str, new_password: str):
-    """Update user password in UserID.xlsx Excel file"""
-    try:
-        user_file = USER_FILE
-        
-        if not os.path.exists(user_file):
-            print(f" ERROR: User file not found: {user_file}")
-            return False
-        
-        # Read the Excel file
-        df = pd.read_excel(user_file)
-        
-        # Find the row with matching User ID
-        mask = df['User ID'].apply(lambda x: str(int(float(x))) == str(user_id) if pd.notna(x) else False)
-        
-        if not mask.any():
-            print(f" User ID {user_id} not found in file")
-            return False
-        
-        # Update the password
-        df.loc[mask, 'Password'] = new_password
-        
-        # Write back to Excel
-        df.to_excel(user_file, index=False)
-        
-        print(f" Password updated in Excel for User ID: {user_id}")
-        return True
-        
-    except Exception as e:
-        print(f" Error updating password in Excel: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def load_user_credentials():
-    """Load user credentials from UserID.xlsx"""
-    try:
-        user_file = USER_FILE
-        if not os.path.exists(user_file):
-            print(f" ERROR: User file not found: {user_file}")
-            # Fallback credentials for Render testing when files are missing
-            if IS_RENDER:
-                print(f" ⚠️  Using fallback credentials for Render testing")
-                return {'11724': 'un001@123'}
-            return {}
-        
-        df = pd.read_excel(user_file)
-        print(f" Loaded user file from {user_file}")
-        print(f"  Total rows: {len(df)}")
-        
-        credentials = {}
-        for idx, row in df.iterrows():
-            try:
-                # Handle User ID - convert float to int to string
-                user_id = None
-                if 'User ID' in df.columns:
-                    uid_value = row['User ID']
-                    # Check if it's NaN
-                    if pd.isna(uid_value):
-                        continue
-                    # Convert float to int, then to string
-                    user_id = str(int(float(uid_value)))
-                
-                # Handle Password
-                password = None
-                if 'Password' in df.columns:
-                    pwd_value = row['Password']
-                    # Check if it's NaN
-                    if pd.isna(pwd_value):
-                        continue
-                    password = str(pwd_value).strip()
-                
-                if user_id and password:
-                    credentials[user_id] = password
-            except Exception as e:
-                continue
-        
-        print(f" Successfully loaded {len(credentials)} valid user credentials")
-        print(f"  Available User IDs: {list(credentials.keys())}\n")
-        return credentials
-    except Exception as e:
-        import traceback
-        print(f" ERROR loading credentials: {e}")
-        traceback.print_exc()
-        # Fallback for Render
-        if IS_RENDER:
-            return {'11724': 'un001@123'}
-        return {}
-
-USER_CREDENTIALS = load_user_credentials()
-SESSIONS = {}
-
-class CaptchaGenerator:
-    """Generate simple CAPTCHA images"""
-    
-    @staticmethod
-    def generate_captcha(length=6):
-        """Generate random captcha string and image"""
-        allowed_chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ123456789'
-        captcha_text = ''.join(secrets.choice(allowed_chars) for _ in range(length))
-        
-        width, height = 500, 150
-        image = Image.new('RGB', (width, height), color='white')
-        draw = ImageDraw.Draw(image)
-        
-        for _ in range(5):
-            x1 = secrets.randbelow(width)
-            y1 = secrets.randbelow(height)
-            x2 = secrets.randbelow(width)
-            y2 = secrets.randbelow(height)
-            draw.line((x1, y1, x2, y2), fill='lightgray', width=1)
-        
-        try:
-            font_size = 80
-            font = ImageFont.truetype("C:\\Windows\\Fonts\\arial.ttf", font_size)
-        except:
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 80)
-            except:
-                font = ImageFont.load_default()
-        
-        x_offset = 15
-        for i, char in enumerate(captcha_text):
-            y_offset = np.random.randint(15, 50)
-            draw.text((x_offset + i * 70, y_offset), char, fill='#FF8C00', font=font)
-        
-        for _ in range(50):
-            x = secrets.randbelow(width)
-            y = secrets.randbelow(height)
-            draw.point((x, y), fill='#FFD699')
-        
-        img_io = io.BytesIO()
-        image.save(img_io, 'PNG')
-        img_io.seek(0)
-        img_base64 = base64.b64encode(img_io.getvalue()).decode()
-        
-        return captcha_text, f"data:image/png;base64,{img_base64}"
-
-def create_session(user_id):
-    """Create a new session for user"""
-    session_id = secrets.token_hex(16)
-    SESSIONS[session_id] = {
-        'user_id': user_id,
-        'created_at': datetime.now(),
-        'last_activity': datetime.now()
-    }
-    return session_id
-
-def verify_session(session_id):
-    """Verify if session is valid"""
-    if session_id not in SESSIONS:
-        return None
-    
-    session = SESSIONS[session_id]
-    if (datetime.now() - session['last_activity']).total_seconds() > 8 * 3600:
-        del SESSIONS[session_id]
-        return None
-    
-    session['last_activity'] = datetime.now()
-    return session['user_id']
-
-# ==================== LOGIN PAGE HTML ====================
-
-LOGIN_PAGE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Warranty Management System - Login</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
-            height: 100vh;
-            width: 100vw;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 0;
-            margin: 0;
-            overflow: hidden;
-        }
-        
-        .login-wrapper {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            width: 95vw;
-            height: 95vh;
-            max-width: 1400px;
-            max-height: 800px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-        }
-        
-        .login-left {
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            background: white;
-            overflow: hidden;
-            height: 100%;
-        }
-        
-        .login-right {
-            background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
-            padding: 25px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            overflow: hidden;
-            height: 100%;
-        }
-        
-        .logo-section {
-            text-align: center;
-            margin-bottom: 15px;
-        }
-        
-        .logo-section h1 {
-            font-size: 28px;
-            color: #333;
-            margin-bottom: 8px;
-        }
-        
-        .login-form {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .form-group label {
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .form-group input {
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.3s ease;
-        }
-        
-        .form-group input:focus {
-            outline: none;
-            border-color: #FF8C00;
-            box-shadow: 0 0 8px rgba(255, 140, 0, 0.2);
-        }
-        
-        .login-btn {
-            background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-        }
-        
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(255, 140, 0, 0.3);
-        }
-        
-        .error-message {
-            color: #c62828;
-            font-size: 13px;
-            margin-top: -15px;
-            display: none;
-        }
-        
-        .error-message.show {
-            display: block;
-        }
-        
-        .captcha-section {
-            margin-top: 15px;
-            padding: 10px;
-            background: #f5f5f5;
-            border-radius: 8px;
-        }
-        
-        .captcha-image {
-            width: 100%;
-            height: auto;
-            margin-bottom: 10px;
-            border-radius: 4px;
-        }
-        
-        .right-content {
-            text-align: center;
-        }
-        
-        .right-content h2 {
-            font-size: 32px;
-            margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-        }
-        
-        .right-content p {
-            font-size: 16px;
-            line-height: 1.6;
-            opacity: 0.95;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-wrapper">
-        <div class="login-left">
-            <div class="logo-section">
-                <h1>Unnati Motors Warranty Management</h1>
-                <p style="color: #666; font-size: 14px;">Mahindra All Division Warranty Overview Dashboard</p>
-                <p style="color: #666; font-size: 14px;">Enter your credentials to access the warranty dashboard</p>
-            </div>
-           
-            <form class="login-form" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label for="userId">User ID</label>
-                    <input type="text" id="userId" name="userId" placeholder="Enter your User ID" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Enter your password" required>
-                </div>
-                
-                <div class="captcha-section">
-                    <img id="captchaImage" class="captcha-image" src="" alt="CAPTCHA">
-                    <input type="text" id="captchaInput" placeholder="Enter CAPTCHA" required style="width: 100%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 4px;">
-                </div>
-                
-                <div class="error-message" id="errorMessage"></div>
-                
-                <button type="submit" class="login-btn">Login</button>
-            </form>
-        </div>
-        
-        <div class="login-right">
-            <div class="right-content">
-                <h2>Welcome</h2>
-                <p>Welcome to Warranty Management System</p>
-                <p style="margin-top: 30px; font-size: 14px; opacity: 0.8;"></p>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        let currentCaptcha = '';
-        
-        async function loadCaptcha() {
-            try {
-                const response = await fetch('/api/captcha');
-                const data = await response.json();
-                currentCaptcha = data.captcha;
-                document.getElementById('captchaImage').src = data.image;
-            } catch (error) {
-                console.error('Error loading CAPTCHA:', error);
-            }
-        }
-        
-        async function handleLogin(event) {
-            event.preventDefault();
-            
-            const userId = document.getElementById('userId').value;
-            const password = document.getElementById('password').value;
-            const captchaInput = document.getElementById('captchaInput').value;
-            const errorDiv = document.getElementById('errorMessage');
-            
-            if (captchaInput.toUpperCase() !== currentCaptcha) {
-                errorDiv.textContent = ' CAPTCHA is incorrect';
-                errorDiv.classList.add('show');
-                loadCaptcha();
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        password: password
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    window.location.href = '/dashboard';
-                } else {
-                    const error = await response.json();
-                    errorDiv.textContent = ' ' + (error.detail || 'Login failed');
-                    errorDiv.classList.add('show');
-                    loadCaptcha();
-                }
-            } catch (error) {
-                errorDiv.textContent = ' Error: ' + error.message;
-                errorDiv.classList.add('show');
-            }
-        }
-        
-        window.onload = function() {
-            loadCaptcha();
-        };
-    </script>
-</body>
-</html>
-"""
-
 # ==================== DASHBOARD HTML ====================
 
 DASHBOARD_HTML = """
@@ -1087,23 +652,6 @@ DASHBOARD_HTML = """
         .navbar-brand {
             font-size: 24px;
             font-weight: 700;
-        }
-        
-        .logout-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid white;
-            color: white;
-            padding: 8px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-        
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            color: white;
-            text-decoration: none;
         }
         
         .container {
@@ -1236,158 +784,6 @@ DASHBOARD_HTML = """
         .table-wrapper {
             overflow-x: auto;
         }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .modal.show {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            padding: 30px;
-            width: 90%;
-            max-width: 400px;
-            animation: slideUp 0.3s ease;
-        }
-        
-        @keyframes slideUp {
-            from {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        .modal-header {
-            font-size: 20px;
-            font-weight: 700;
-            color: #FF8C00;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #999;
-            transition: color 0.3s ease;
-        }
-        
-        .modal-close-btn:hover {
-            color: #FF8C00;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 600;
-            font-size: 13px;
-        }
-        
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 13px;
-            transition: all 0.3s ease;
-        }
-        
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: #FF8C00;
-            box-shadow: 0 0 8px rgba(255, 140, 0, 0.2);
-        }
-        
-        .modal-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 25px;
-        }
-        
-        .modal-buttons button {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 14px;
-        }
-        
-        .btn-change {
-            background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
-            color: white;
-        }
-        
-        .btn-change:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(255, 140, 0, 0.3);
-        }
-        
-        .btn-cancel {
-            background: #e0e0e0;
-            color: #333;
-        }
-        
-        .btn-cancel:hover {
-            background: #d0d0d0;
-        }
-        
-        .modal-message {
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-size: 13px;
-            display: none;
-        }
-        
-        .modal-message.success {
-            background: #e8f5e9;
-            color: #2e7d32;
-            border-left: 4px solid #2e7d32;
-            display: block;
-        }
-        
-        .modal-message.error {
-            background: #ffebee;
-            color: #c62828;
-            border-left: 4px solid #c62828;
-            display: block;
-        }
 
         /* ===== EXPORT SECTION STYLES ===== */
         .export-section {
@@ -1488,11 +884,6 @@ DASHBOARD_HTML = """
     <nav class="navbar navbar-dark">
         <div class="container-fluid">
             <span class="navbar-brand">📊 Unnati Motors Warranty Management Dashboard</span>
-            <div>
-                <span style="color: white; margin-right: 20px;" id="userDisplay"></span>
-                <button onclick="openChangePasswordModal()" style="background: #FFD54F; border: none; color: #333; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; margin-right: 10px; transition: all 0.3s ease; font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">🔐 Change Password</button>
-                <a href="/logout" class="logout-btn">🚪 Logout</a>
-            </div>
         </div>
     </nav>
     
@@ -1614,40 +1005,6 @@ DASHBOARD_HTML = """
         </div>
     </div>
     
-    <!-- Change Password Modal -->
-    <div id="changePasswordModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                🔐 Change Password
-                <button class="modal-close-btn" onclick="closeChangePasswordModal()">✕</button>
-            </div>
-            
-            <div id="modalMessage" class="modal-message"></div>
-            
-            <form id="changePasswordForm" onsubmit="handleChangePassword(event)">
-                <div class="form-group">
-                    <label for="currentPassword">Current Password:</label>
-                    <input type="password" id="currentPassword" name="currentPassword" required placeholder="Enter current password">
-                </div>
-                
-                <div class="form-group">
-                    <label for="newPassword">New Password:</label>
-                    <input type="password" id="newPassword" name="newPassword" required placeholder="Enter new password" minlength="6">
-                </div>
-                
-                <div class="form-group">
-                    <label for="confirmPassword">Confirm New Password:</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Confirm new password" minlength="6">
-                </div>
-                
-                <div class="modal-buttons">
-                    <button type="button" class="btn-cancel" onclick="closeChangePasswordModal()">Cancel</button>
-                    <button type="submit" class="btn-change">Change Password</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
     <script>
         let warrantyData = {};
         
@@ -1660,12 +1017,10 @@ DASHBOARD_HTML = """
             
             try {
                 console.log('========== DASHBOARD LOAD START ==========');
-                console.log('🔍 Fetching warranty data with credentials...');
-                console.log('📌 Current cookies:', document.cookie);
+                console.log('🔍 Fetching warranty data...');
                 
                 const response = await fetch('/api/warranty-data', {
                     method: 'GET',
-                    credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
@@ -1674,13 +1029,6 @@ DASHBOARD_HTML = """
                 
                 console.log('📊 Response received');
                 console.log('📊 Response status:', response.status);
-                
-                if (response.status === 401) {
-                    console.error('❌ Unauthorized (401) - Session expired');
-                    alert('Session expired. Please login again.');
-                    window.location.href = '/login-page';
-                    return;
-                }
                 
                 if (!response.ok) {
                     const text = await response.text();
@@ -1894,7 +1242,6 @@ DASHBOARD_HTML = """
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    credentials: 'include',
                     body: JSON.stringify({
                         division: division,
                         type: type
@@ -1930,80 +1277,8 @@ DASHBOARD_HTML = """
         window.onload = function() {
             console.log('========== DASHBOARD PAGE ONLOAD ==========');
             console.log('🚀 Dashboard page loaded');
-            
-            document.getElementById('userDisplay').textContent = 'Welcome to Warranty Dashboard';
             loadDashboard();
         };
-        
-        function openChangePasswordModal() {
-            document.getElementById('changePasswordModal').classList.add('show');
-            document.getElementById('modalMessage').classList.remove('success', 'error');
-            document.getElementById('modalMessage').textContent = '';
-            document.getElementById('changePasswordForm').reset();
-        }
-        
-        function closeChangePasswordModal() {
-            document.getElementById('changePasswordModal').classList.remove('show');
-            document.getElementById('changePasswordForm').reset();
-        }
-        
-        async function handleChangePassword(event) {
-            event.preventDefault();
-            
-            const currentPassword = document.getElementById('currentPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            const messageDiv = document.getElementById('modalMessage');
-            
-            messageDiv.classList.remove('success', 'error');
-            messageDiv.textContent = '';
-            
-            if (!currentPassword || !newPassword || !confirmPassword) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' All fields are required';
-                return;
-            }
-            
-            if (newPassword !== confirmPassword) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' New passwords do not match';
-                return;
-            }
-            
-            if (newPassword.length < 6) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' Password must be at least 6 characters';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/change-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        current_password: currentPassword,
-                        new_password: newPassword
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    messageDiv.classList.add('success');
-                    messageDiv.textContent = ' Password changed successfully!';
-                    setTimeout(() => closeChangePasswordModal(), 2000);
-                } else {
-                    messageDiv.classList.add('error');
-                    messageDiv.textContent = ' ' + (data.detail || 'Error changing password');
-                }
-            } catch (error) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' Error: ' + error.message;
-            }
-        }
     </script>
 </body>
 </html>
@@ -2015,66 +1290,11 @@ app = FastAPI()
 
 # ==================== API ENDPOINTS ====================
 
-@app.post("/api/change-password")
-async def change_password(request: Request, session_id: str = Cookie(None)):
-    """Change user password"""
-    try:
-        if not session_id or not verify_session(session_id):
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        user_id = verify_session(session_id)
-        body = await request.json()
-        current_password = body.get('current_password', '')
-        new_password = body.get('new_password', '')
-        
-        if not current_password or not new_password:
-            raise HTTPException(status_code=400, detail="Missing required fields")
-        
-        if current_password != USER_CREDENTIALS.get(user_id):
-            raise HTTPException(status_code=401, detail="Current password is incorrect")
-        
-        if len(new_password) < 6:
-            raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
-        
-        success = update_user_password_in_excel(user_id, new_password)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to update password in database")
-        
-        USER_CREDENTIALS[user_id] = new_password
-        
-        print(f" Password successfully changed for user {user_id}")
-        
-        return {
-            "success": True,
-            "message": "Password changed successfully! You can now login with your new password."
-        }
-        
-    except HTTPException as e:
-        raise
-    except Exception as e:
-        print(f" Error changing password: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/export-to-excel")
-async def export_to_excel(request: Request, session_id: str = Cookie(None)):
+async def export_to_excel(request: Request):
     """Export selected division data to Excel with summary and detailed sheets"""
     try:
         print(f" Export request received")
-        
-        # Verify authentication
-        if not session_id:
-            print(f" No session_id provided")
-            raise HTTPException(status_code=401, detail="Not authenticated - no session")
-        
-        user_id = verify_session(session_id)
-        if not user_id:
-            print(f" Session verification failed")
-            raise HTTPException(status_code=401, detail="Session expired or invalid")
-        
-        print(f" User verified: {user_id}")
         
         # Get request body
         body = await request.json()
@@ -2542,118 +1762,6 @@ async def export_current_month_warranty(selected_division: str):
             ) + 2, 30)
             ws1.column_dimensions[chr(64 + col_idx)].width = max_length
         
-        # ==================== SHEET 2: PENDING SPARES CLAIMS ====================
-        if source_df is not None and not source_df.empty:
-            # Filter source data by division if specific division selected
-            if selected_division != 'All' and selected_division != 'Grand Total':
-                spares_df = source_df[source_df['Division'] == selected_division].copy()
-            else:
-                spares_df = source_df.copy()
-            
-            # Filter only records where Pending Claims Spares is NOT empty
-            spares_df = spares_df[spares_df['Pending Claims Spares'].notna()].copy()
-            
-            if not spares_df.empty:
-                ws2 = wb.create_sheet()
-                if selected_division != 'All' and selected_division != 'Grand Total':
-                    ws2.title = f"{selected_division} - Spares"
-                else:
-                    ws2.title = "Pending Spares Claims"
-                
-                # Write headers
-                for col_idx, column in enumerate(spares_df.columns, 1):
-                    cell = ws2.cell(row=1, column=col_idx, value=column)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                
-                # Write data
-                for row_idx, row in enumerate(spares_df.itertuples(index=False), 2):
-                    for col_idx, value in enumerate(row, 1):
-                        cell = ws2.cell(row=row_idx, column=col_idx)
-                        
-                        if isinstance(value, (int, float)):
-                            cell.value = value
-                            cell.number_format = '#,##0.00'
-                            cell.alignment = Alignment(horizontal='right', vertical='center')
-                        elif isinstance(value, (datetime, pd.Timestamp)):
-                            cell.value = value
-                            cell.number_format = 'DD-MM-YYYY'
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        else:
-                            cell.value = str(value) if not pd.isna(value) else ''
-                            cell.alignment = Alignment(horizontal='left', vertical='center')
-                        
-                        cell.border = border
-                
-                # Adjust column widths
-                for col_idx, column in enumerate(spares_df.columns, 1):
-                    max_length = min(max(
-                        spares_df[column].astype(str).map(len).max(),
-                        len(str(column))
-                    ) + 2, 35)
-                    column_letter = ws2.cell(row=1, column=col_idx).column_letter
-                    ws2.column_dimensions[column_letter].width = max_length
-                
-                print(f"📊 Pending Spares Claims rows: {len(spares_df)}")
-        
-        # ==================== SHEET 3: PENDING LABOUR CLAIMS ====================
-        if source_df is not None and not source_df.empty:
-            # Filter source data by division if specific division selected
-            if selected_division != 'All' and selected_division != 'Grand Total':
-                labour_df = source_df[source_df['Division'] == selected_division].copy()
-            else:
-                labour_df = source_df.copy()
-            
-            # Filter only records where Pending Claims Labour is NOT empty
-            labour_df = labour_df[labour_df['Pending Claims Labour'].notna()].copy()
-            
-            if not labour_df.empty:
-                ws3 = wb.create_sheet()
-                if selected_division != 'All' and selected_division != 'Grand Total':
-                    ws3.title = f"{selected_division} - Labour"
-                else:
-                    ws3.title = "Pending Labour Claims"
-                
-                # Write headers
-                for col_idx, column in enumerate(labour_df.columns, 1):
-                    cell = ws3.cell(row=1, column=col_idx, value=column)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                
-                # Write data
-                for row_idx, row in enumerate(labour_df.itertuples(index=False), 2):
-                    for col_idx, value in enumerate(row, 1):
-                        cell = ws3.cell(row=row_idx, column=col_idx)
-                        
-                        if isinstance(value, (int, float)):
-                            cell.value = value
-                            cell.number_format = '#,##0.00'
-                            cell.alignment = Alignment(horizontal='right', vertical='center')
-                        elif isinstance(value, (datetime, pd.Timestamp)):
-                            cell.value = value
-                            cell.number_format = 'DD-MM-YYYY'
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        else:
-                            cell.value = str(value) if not pd.isna(value) else ''
-                            cell.alignment = Alignment(horizontal='left', vertical='center')
-                        
-                        cell.border = border
-                
-                # Adjust column widths
-                for col_idx, column in enumerate(labour_df.columns, 1):
-                    max_length = min(max(
-                        labour_df[column].astype(str).map(len).max(),
-                        len(str(column))
-                    ) + 2, 35)
-                    column_letter = ws3.cell(row=1, column=col_idx).column_letter
-                    ws3.column_dimensions[column_letter].width = max_length
-                
-                print(f"📊 Pending Labour Claims rows: {len(labour_df)}")
-        
         # Save to BytesIO
         output = io.BytesIO()
         wb.save(output)
@@ -2743,63 +1851,6 @@ async def export_compensation_claim(selected_division: str):
                 len(str(column))
             ) + 2, 30)
             ws1.column_dimensions[chr(64 + col_idx)].width = max_length
-        
-        # ==================== SHEET 2: DETAILED COMPENSATION CLAIMS ====================
-        if source_df is not None and not source_df.empty:
-            # Filter source data by division if specific division selected
-            if selected_division != 'All' and selected_division != 'Grand Total':
-                detail_df = source_df[source_df['Division'] == selected_division].copy()
-            else:
-                detail_df = source_df.copy()
-            
-            if not detail_df.empty:
-                ws2 = wb.create_sheet()
-                if selected_division != 'All' and selected_division != 'Grand Total':
-                    ws2.title = f"{selected_division} - Details"
-                else:
-                    ws2.title = "Compensation Details"
-                
-                # Write headers
-                for col_idx, column in enumerate(detail_df.columns, 1):
-                    cell = ws2.cell(row=1, column=col_idx, value=column)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                
-                # Write data
-                for row_idx, row in enumerate(detail_df.itertuples(index=False), 2):
-                    for col_idx, value in enumerate(row, 1):
-                        cell = ws2.cell(row=row_idx, column=col_idx)
-                        column_name = detail_df.columns[col_idx - 1]
-                        
-                        if column_name == 'RO Id.':
-                            cell.value = str(value) if not pd.isna(value) and str(value).strip() != '' else ''
-                            cell.alignment = Alignment(horizontal='left', vertical='center')
-                        elif isinstance(value, (int, float)):
-                            cell.value = value
-                            cell.number_format = '#,##0.00'
-                            cell.alignment = Alignment(horizontal='right', vertical='center')
-                        elif isinstance(value, (datetime, pd.Timestamp)):
-                            cell.value = value
-                            cell.number_format = 'DD-MM-YYYY'
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        else:
-                            cell.value = str(value) if not pd.isna(value) else ''
-                            cell.alignment = Alignment(horizontal='left', vertical='center')
-                        
-                        cell.border = border
-                
-                # Adjust column widths
-                for col_idx, column in enumerate(detail_df.columns, 1):
-                    max_length = min(max(
-                        detail_df[column].astype(str).map(len).max(),
-                        len(str(column))
-                    ) + 2, 35)
-                    column_letter = ws2.cell(row=1, column=col_idx).column_letter
-                    ws2.column_dimensions[column_letter].width = max_length
-                
-                print(f"📊 Compensation Claim details rows: {len(detail_df)}")
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -2891,59 +1942,6 @@ async def export_pr_approval(selected_division: str):
             ) + 2, 30)
             ws1.column_dimensions[chr(64 + col_idx)].width = max_length
         
-        # ==================== SHEET 2: COMPLETE DETAILED DATA ====================
-        if source_df is not None and not source_df.empty:
-            # Filter source data by division if specific division selected
-            if selected_division != 'All' and selected_division != 'Grand Total':
-                detail_df = source_df[source_df['Division'] == selected_division].copy()
-            else:
-                detail_df = source_df.copy()
-            
-            if not detail_df.empty:
-                ws2 = wb.create_sheet()
-                if selected_division != 'All' and selected_division != 'Grand Total':
-                    ws2.title = f"{selected_division} - Details"
-                else:
-                    ws2.title = "PR Approval Details"
-                
-                # Write headers
-                for col_idx, column in enumerate(detail_df.columns, 1):
-                    cell = ws2.cell(row=1, column=col_idx, value=column)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                
-                # Write data
-                for row_idx, row in enumerate(detail_df.itertuples(index=False), 2):
-                    for col_idx, value in enumerate(row, 1):
-                        cell = ws2.cell(row=row_idx, column=col_idx)
-                        
-                        if isinstance(value, (int, float)):
-                            cell.value = value
-                            cell.number_format = '#,##0.00'
-                            cell.alignment = Alignment(horizontal='right', vertical='center')
-                        elif isinstance(value, (datetime, pd.Timestamp)):
-                            cell.value = value
-                            cell.number_format = 'DD-MM-YYYY'
-                            cell.alignment = Alignment(horizontal='center', vertical='center')
-                        else:
-                            cell.value = str(value) if not pd.isna(value) else ''
-                            cell.alignment = Alignment(horizontal='left', vertical='center')
-                        
-                        cell.border = border
-                
-                # Adjust column widths
-                for col_idx, column in enumerate(detail_df.columns, 1):
-                    max_length = min(max(
-                        detail_df[column].astype(str).map(len).max(),
-                        len(str(column))
-                    ) + 2, 35)
-                    column_letter = ws2.cell(row=1, column=col_idx).column_letter
-                    ws2.column_dimensions[column_letter].width = max_length
-                
-                print(f"📊 PR Approval details rows: {len(detail_df)}")
-        
         # Save to BytesIO
         output = io.BytesIO()
         wb.save(output)
@@ -2965,79 +1963,17 @@ async def export_pr_approval(selected_division: str):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Export error: {str(e)}")
 
-@app.get("/api/captcha")
-async def get_captcha():
-    """Generate and return a CAPTCHA"""
-    captcha_text, captcha_image = CaptchaGenerator.generate_captcha()
-    return {
-        "captcha": captcha_text,
-        "image": captcha_image
-    }
-
 @app.get("/api/vehicle-images")
 async def get_vehicle_images():
     """Return vehicle images"""
     images_data = [{'name': img['name'], 'data': img['data']} for img in MAHINDRA_IMAGES]
     return {"images": images_data}
 
-@app.post("/api/login")
-async def api_login(request: Request):
-    """Handle API login request"""
-    try:
-        body = await request.json()
-        user_id = body.get('user_id', '').strip()
-        password = body.get('password', '')
-        
-        if not user_id or user_id not in USER_CREDENTIALS:
-            raise HTTPException(status_code=401, detail="Invalid User ID")
-        
-        if USER_CREDENTIALS[user_id] != password:
-            raise HTTPException(status_code=401, detail="Invalid Password")
-        
-        session_id = create_session(user_id)
-        
-        response_data = {
-            "success": True,
-            "session_id": session_id,
-            "user_id": user_id,
-            "message": "Login successful"
-        }
-        
-        response = JSONResponse(content=response_data, status_code=200)
-        response.set_cookie(
-            key="session_id", 
-            value=session_id, 
-            httponly=True, 
-            max_age=28800,
-            samesite="lax",
-            path="/"
-        )
-        return response
-        
-    except HTTPException as e:
-        raise
-    except Exception as e:
-        print(f"Login error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
 @app.get("/api/warranty-data")
-async def get_warranty_data(session_id: str = Cookie(None)):
+async def get_warranty_data():
     """Get warranty data (Credit, Debit, Arbitration, Current Month)"""
     try:
         print(f"🔍 Warranty data request received")
-        
-        if not session_id:
-            print(f" No session_id cookie found")
-            raise HTTPException(status_code=401, detail="Not authenticated - no session")
-        
-        user_id = verify_session(session_id)
-        print(f"📌 Verified user_id: {user_id}")
-        
-        if not user_id:
-            print(f" Session verification failed")
-            raise HTTPException(status_code=401, detail="Session expired or invalid")
-        
-        print(f" Session valid for user: {user_id}")
         
         if WARRANTY_DATA['credit_df'] is None:
             print(f" Warranty data not loaded")
@@ -3092,54 +2028,21 @@ async def get_warranty_data(session_id: str = Cookie(None)):
             "compensation": compensation_records,
             "prApproval": pr_approval_records
         }
-    except HTTPException as e:
-        print(f" HTTPException: {e.detail}")
-        raise
     except Exception as e:
         print(f" Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/login-page")
-async def login_page():
-    """Serve the login page"""
-    return HTMLResponse(content=LOGIN_PAGE)
-
 @app.get("/dashboard")
-async def dashboard(session_id: str = Cookie(None)):
-    """Serve dashboard only if authenticated"""
-    try:
-        if not session_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        user_id = verify_session(session_id)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Session expired")
-        
-        return HTMLResponse(content=DASHBOARD_HTML)
-    except HTTPException:
-        return RedirectResponse(url="/login-page", status_code=302)
-
-@app.get("/logout")
-async def logout(session_id: str = Cookie(None)):
-    """Logout user"""
-    if session_id in SESSIONS:
-        del SESSIONS[session_id]
-    response = RedirectResponse(url="/login-page", status_code=302)
-    response.delete_cookie("session_id")
-    return response
+async def dashboard():
+    """Serve dashboard directly without authentication"""
+    return HTMLResponse(content=DASHBOARD_HTML)
 
 @app.get("/")
-async def root(session_id: str = Cookie(None)):
-    """Root route - redirect to dashboard or login"""
-    try:
-        if session_id and verify_session(session_id):
-            return RedirectResponse(url="/dashboard", status_code=302)
-    except:
-        pass
-    
-    return RedirectResponse(url="/login-page", status_code=302)
+async def root():
+    """Root route - redirect to dashboard directly"""
+    return RedirectResponse(url="/dashboard", status_code=302)
 
 # ==================== STARTUP ====================
 
@@ -3170,15 +2073,13 @@ if __name__ == "__main__":
     port = int(os.getenv('PORT', 8001))
     
     print("\n" + "=" * 100)
-    print(f" SERVER READY - Warranty Dashboard")
+    print(f" SERVER READY - Warranty Dashboard (NO LOGIN)")
     print("=" * 100)
     print(f"🌐 PORT: {port}")
     print(f"🌐 Environment: {'RENDER (Production)' if IS_RENDER else 'Local Development'}")
-    print(f"🌐 Login URL: http://localhost:{port}/login-page")
-    print(f"🌐 Network URL: http://{local_ip}:{port}/login-page")
-    print(f"\n🔐 Test Credentials:")
-    print(f"   User ID: 11724")
-    print(f"   Password: un001@123")
+    print(f"🌐 Dashboard URL: http://localhost:{port}/dashboard")
+    print(f"🌐 Network URL: http://{local_ip}:{port}/dashboard")
+    print(f"\n✅ Dashboard opens directly - NO LOGIN REQUIRED")
     print("\n" + "=" * 100 + "\n")
     
     uvicorn.run(app, host="0.0.0.0", port=port)
