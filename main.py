@@ -8,27 +8,27 @@ import pandas as pd
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
+
 
 # =========================================================
 # ENV / PATHS
 # =========================================================
 IS_RENDER = os.getenv("RENDER", "").lower() == "true"
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "10000"))
 DATA_DIR = Path(os.getenv("DATA_DIR", "/mnt/data"))
-
 BASE_DIR = Path(__file__).resolve().parent
 
-# Where we search for files (Render + Local)
 CANDIDATE_DIRS = [
-    DATA_DIR,               # Render disk
-    BASE_DIR,               # repo root
-    BASE_DIR / "Data",      # repo Data folder
-    BASE_DIR / "data",      # repo data folder
+    DATA_DIR,                       # Render disk
+    BASE_DIR,                       # repo root
+    BASE_DIR / "Data",              # repo Data folder
+    BASE_DIR / "data",              # repo data folder
     Path("/opt/render/project/src"),
     Path("/opt/render/project/src/Data"),
     Path("/opt/render/project/src/data"),
@@ -41,26 +41,23 @@ FILES = {
     "Pr_Approval_Claims_Merged.xlsx": "Pr_Approval_Claims_Merged.xlsx",
 }
 
-
-def safe_listdir(p: Path):
-    try:
-        if p.exists() and p.is_dir():
-            return sorted([x.name for x in p.iterdir()])
-    except Exception:
-        pass
-    return []
-
-
 def find_file(filename: str) -> Path | None:
-    """
-    Searches for a file in multiple locations.
-    Works for Render and Local.
-    """
     for d in CANDIDATE_DIRS:
         p = d / filename
         if p.exists() and p.is_file():
             return p
     return None
+
+def normalize_division_series(s: pd.Series) -> pd.Series:
+    s = s.astype(str).str.strip()
+    s = s.replace({"nan": "", "None": ""})
+    return s
+
+def safe_numeric(df: pd.DataFrame, col: str) -> None:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    else:
+        df[col] = 0
 
 
 # =========================================================
@@ -71,13 +68,17 @@ WARRANTY_DATA = {
     "debit_df": None,
     "arbitration_df": None,
     "source_df": None,
+
     "current_month_df": None,
     "current_month_source_df": None,
+
     "compensation_df": None,
     "compensation_source_df": None,
+
     "pr_approval_df": None,
     "pr_approval_source_df": None,
 }
+
 
 # =========================================================
 # PROCESSING FUNCTIONS
@@ -87,6 +88,7 @@ def process_pr_approval():
     if not p:
         print("PR Approval file not found.")
         return None, None
+
     try:
         df = pd.read_excel(p)
         print(f"PR Approval loaded: {p}")
@@ -97,12 +99,15 @@ def process_pr_approval():
             return None, df
 
         df_summary = df[available].copy()
+
         if "Division" in df_summary.columns:
-            df_summary["Division"] = df_summary["Division"].astype(str).str.strip()
-            df_summary = df_summary[df_summary["Division"].notna() & (df_summary["Division"] != "") & (df_summary["Division"] != "nan")]
+            df_summary["Division"] = normalize_division_series(df_summary["Division"])
+            df_summary = df_summary[df_summary["Division"] != ""]
 
         if "App. Claim Amt from M&M" in df_summary.columns:
-            df_summary["App. Claim Amt from M&M"] = pd.to_numeric(df_summary["App. Claim Amt from M&M"], errors="coerce").fillna(0)
+            df_summary["App. Claim Amt from M&M"] = pd.to_numeric(
+                df_summary["App. Claim Amt from M&M"], errors="coerce"
+            ).fillna(0)
 
         if "Division" not in df_summary.columns:
             return pd.DataFrame(), df_summary
@@ -121,7 +126,9 @@ def process_pr_approval():
             if c != "Division":
                 gt[c] = out[c].sum()
         out = pd.concat([out, pd.DataFrame([gt])], ignore_index=True)
+
         return out, df_summary
+
     except Exception as e:
         print(f"Error processing PR Approval: {e}")
         return None, None
@@ -147,9 +154,10 @@ def process_compensation_claim():
             return None, df
 
         df2 = df[available].copy()
+
         if "Division" in df2.columns:
-            df2["Division"] = df2["Division"].astype(str).str.strip()
-            df2 = df2[df2["Division"].notna() & (df2["Division"] != "") & (df2["Division"] != "nan")]
+            df2["Division"] = normalize_division_series(df2["Division"])
+            df2 = df2[df2["Division"] != ""]
 
         for c in ["Claim Amount", "Claim Approved Amt.", "No. of Days"]:
             if c in df2.columns:
@@ -179,7 +187,9 @@ def process_compensation_claim():
                 else:
                     gt[c] = out[c].sum()
         out = pd.concat([out, pd.DataFrame([gt])], ignore_index=True)
+
         return out, df2
+
     except Exception as e:
         print(f"Error processing Compensation: {e}")
         return None, None
@@ -192,7 +202,12 @@ def process_current_month_warranty():
         return None, None
 
     try:
-        df = pd.read_excel(p, sheet_name="Pending Warranty Claim Details")
+        # Your file sometimes has sheet_name; keep safe fallback
+        try:
+            df = pd.read_excel(p, sheet_name="Pending Warranty Claim Details")
+        except Exception:
+            df = pd.read_excel(p)
+
         print(f"Current Month loaded: {p}")
 
         required = ["Division", "Pending Claims Spares", "Pending Claims Labour"]
@@ -201,8 +216,8 @@ def process_current_month_warranty():
             print(f"Missing columns in current month file: {missing}")
             return None, df
 
-        df["Division"] = df["Division"].astype(str).str.strip()
-        df = df[df["Division"].notna() & (df["Division"] != "") & (df["Division"] != "nan")]
+        df["Division"] = normalize_division_series(df["Division"])
+        df = df[df["Division"] != ""]
 
         rows = []
         for div in sorted(df["Division"].unique()):
@@ -224,7 +239,9 @@ def process_current_month_warranty():
             "Total Pending Claims": int(out["Total Pending Claims"].sum()) if not out.empty else 0,
         }
         out = pd.concat([out, pd.DataFrame([gt])], ignore_index=True)
+
         return out, df
+
     except Exception as e:
         print(f"Error processing Current Month: {e}")
         return None, None
@@ -237,7 +254,12 @@ def process_warranty_data():
         return None, None, None, None
 
     try:
-        df = pd.read_excel(p, sheet_name="Sheet1")
+        # Your base uses Sheet1; keep fallback
+        try:
+            df = pd.read_excel(p, sheet_name="Sheet1")
+        except Exception:
+            df = pd.read_excel(p)
+
         print(f"Warranty loaded: {p}")
 
         dealer_mapping = {
@@ -253,11 +275,9 @@ def process_warranty_data():
             "NAGPUR_WARDHAMAN NGR_CQ": "CQ",
         }
 
-        for c in ["Total Claim Amount", "Credit Note Amount", "Debit Note Amount"]:
-            if c in df.columns:
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-            else:
-                df[c] = 0
+        safe_numeric(df, "Total Claim Amount")
+        safe_numeric(df, "Credit Note Amount")
+        safe_numeric(df, "Debit Note Amount")
 
         if "Dealer Location" not in df.columns:
             df["Dealer Location"] = ""
@@ -268,6 +288,7 @@ def process_warranty_data():
 
         df["Dealer_Code"] = df["Dealer Location"].map(dealer_mapping).fillna(df["Dealer Location"])
         df["Month"] = df["Fiscal Month"].astype(str).str.strip().str[:3]
+
         df["Claim arbitration ID"] = df["Claim arbitration ID"].astype(str).replace("nan", "").replace("", np.nan)
 
         dealers = sorted([x for x in df["Dealer_Code"].dropna().unique().tolist() if str(x).strip() != ""])
@@ -342,13 +363,14 @@ def process_warranty_data():
         arbitration_df = pd.concat([arbitration_df, pd.DataFrame([gt])], ignore_index=True)
 
         return credit_df, debit_df, arbitration_df, df
+
     except Exception as e:
         print(f"Error processing warranty data: {e}")
         return None, None, None, None
 
 
 # =========================================================
-# DASHBOARD HTML (DIRECT OPEN)
+# DASHBOARD HTML (YOUR TAB UI + EXPORT)
 # =========================================================
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -359,31 +381,35 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; background: #f5f5f5; }
-        .navbar { background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%); color: white; padding: 18px 26px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); position: sticky; top: 0; z-index: 100; }
-        .navbar h1 { font-size: 22px; font-weight: 800; }
-        .container { max-width: 1400px; margin: 26px auto; padding: 0 18px; }
-        .dashboard { background: white; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.10); padding: 22px; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; border-bottom: 2px solid #FF8C00; }
-        .tab-btn { padding: 10px 16px; border: none; background: transparent; cursor: pointer; font-weight: 800; color: #666; border-bottom: 3px solid transparent; transition: all 0.2s; }
+        .navbar { background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%); color: white; padding: 20px 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 100; }
+        .navbar h1 { font-size: 28px; font-weight: 700; }
+        .container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+        .dashboard { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 30px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 2px solid #FF8C00; }
+        .tab-btn { padding: 12px 20px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s; }
         .tab-btn:hover, .tab-btn.active { color: #FF8C00; border-bottom-color: #FF8C00; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
-        th { background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%); color: white; padding: 10px; text-align: center; font-weight: 800; white-space: nowrap; }
-        td { padding: 9px 10px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap; }
-        td:first-child { text-align: left; font-weight: 800; }
-        tr:hover { background: #f9f9f9; }
-        tr:last-child { background: #fff8f3; font-weight: 900; border-top: 2px solid #FF8C00; }
-        .loading { text-align: center; padding: 40px; font-weight: 800; color: #666; }
-        .spinner { border: 4px solid #ddd; border-top: 4px solid #FF8C00; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 12px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .export-section { background: #fff8f3; padding: 14px; border-radius: 10px; border-left: 5px solid #FF8C00; margin-bottom: 16px; }
-        .export-section h3 { color: #FF8C00; margin-bottom: 10px; font-weight: 900; }
-        .export-controls { display: flex; gap: 10px; flex-wrap: wrap; background: white; padding: 12px; border-radius: 10px; }
-        .export-controls select { padding: 8px 12px; border: 2px solid #FF8C00; border-radius: 8px; font-weight: 800; }
-        .export-btn { padding: 9px 22px; background: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 900; }
-        .export-btn:hover { background: #45a049; }
+
         .table-wrap { overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+        th { background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%); color: white; padding: 12px; text-align: center; font-weight: 600; white-space: nowrap; }
+        td { padding: 10px; border-bottom: 1px solid #eee; text-align: right; white-space: nowrap; }
+        td:first-child { text-align: left; font-weight: 600; }
+        tr:hover { background: #f9f9f9; }
+        tr:last-child { background: #fff8f3; font-weight: 700; border-top: 2px solid #FF8C00; }
+
+        .loading { text-align: center; padding: 40px; }
+        .spinner { border: 4px solid #ddd; border-top: 4px solid #FF8C00; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .export-section { background: #fff8f3; padding: 20px; border-radius: 8px; border-left: 5px solid #FF8C00; margin-bottom: 20px; }
+        .export-section h3 { color: #FF8C00; margin-bottom: 15px; font-weight: 800; }
+        .export-controls { display: flex; gap: 15px; flex-wrap: wrap; background: white; padding: 15px; border-radius: 6px; }
+        .export-controls select { padding: 8px 12px; border: 2px solid #FF8C00; border-radius: 6px; font-weight: 700; }
+        .export-btn { padding: 10px 25px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 800; transition: all 0.2s; }
+        .export-btn:hover { background: #45a049; }
     </style>
 </head>
 <body>
@@ -395,10 +421,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <div class="dashboard">
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                Loading data
+                <p>Loading data...</p>
             </div>
 
-            <div id="content" style="display:none;">
+            <div id="content" style="display: none;">
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab('credit', event)">Credit</button>
                     <button class="tab-btn" onclick="switchTab('debit', event)">Debit</button>
@@ -411,7 +437,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <div class="export-section">
                     <h3>Export to Excel</h3>
                     <div class="export-controls">
-                        <select id="divisionFilter"></select>
+                        <select id="divisionFilter"><option value="All">All Divisions</option></select>
                         <select id="exportType">
                             <option value="credit">Credit</option>
                             <option value="debit">Debit</option>
@@ -482,24 +508,28 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             const division = document.getElementById("divisionFilter").value;
             const type = document.getElementById("exportType").value;
 
-            const res = await fetch("/api/export", {
-                method: "POST",
-                headers: {"Content-Type":"application/json"},
-                body: JSON.stringify({division, type})
-            });
-            if(!res.ok){
+            try{
+                const res = await fetch("/api/export", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({division, type})
+                });
+                if(!res.ok){
+                    alert("Export failed");
+                    return;
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = type + "_" + division + ".xlsx";
+                document.body.appendChild(a);
+                a.click();
+                URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }catch(e){
                 alert("Export failed");
-                return;
             }
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = type + "_" + division + ".xlsx";
-            document.body.appendChild(a);
-            a.click();
-            URL.revokeObjectURL(url);
-            document.body.removeChild(a);
         }
 
         async function loadData(){
@@ -519,7 +549,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 document.getElementById("loading").style.display = "none";
                 document.getElementById("content").style.display = "block";
             }catch(e){
-                document.getElementById("loading").innerHTML = "Error loading data";
+                document.getElementById("loading").innerHTML = "<p style='color:red;font-weight:800'>Error loading data</p>";
             }
         }
 
@@ -528,43 +558,80 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 </body>
 </html>"""
 
+
 # =========================================================
-# FASTAPI SETUP
+# EXCEL EXPORT HELPERS (BASE STYLE)
 # =========================================================
-app = FastAPI(title="Warranty Dashboard - Direct")
+HEADER_FILL = PatternFill(start_color="FF8C00", end_color="FF8C00", fill_type="solid")
+HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+
+THIN_BORDER = Border(
+    left=Side(style="thin"),
+    right=Side(style="thin"),
+    top=Side(style="thin"),
+    bottom=Side(style="thin"),
+)
+
+def write_df_to_sheet(ws, df: pd.DataFrame):
+    if df is None or df.empty:
+        ws["A1"] = "No data"
+        ws["A1"].font = Font(bold=True)
+        return
+
+    for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), 1):
+        for c_idx, value in enumerate(row, 1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            cell.border = THIN_BORDER
+
+            if r_idx == 1:
+                cell.fill = HEADER_FILL
+                cell.font = HEADER_FONT
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            else:
+                if isinstance(value, (int, float, np.integer, np.floating)):
+                    cell.number_format = "#,##0.00"
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                else:
+                    cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    # Auto width
+    for col_cells in ws.columns:
+        max_len = 0
+        col_letter = col_cells[0].column_letter
+        for c in col_cells:
+            v = "" if c.value is None else str(c.value)
+            if len(v) > max_len:
+                max_len = len(v)
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 45)
+
+
+# =========================================================
+# FASTAPI SETUP (DIRECT OPEN)
+# =========================================================
+app = FastAPI(title="Warranty Dashboard - Direct (No Login)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
 
-# =========================================================
-# STARTUP: LOAD DATA + LOG FILE PATHS
-# =========================================================
 @app.on_event("startup")
 def startup():
-    print("=" * 90)
-    print("WARRANTY DASHBOARD START")
+    print("=" * 100)
+    print("WARRANTY MANAGEMENT DASHBOARD")
     print(f"Environment: {'RENDER' if IS_RENDER else 'LOCAL'}")
     print(f"PORT: {PORT}")
     print(f"DATA_DIR: {DATA_DIR}")
-    print("=" * 90)
+    print("Checking files:")
+    for k in FILES.keys():
+        fp = find_file(k)
+        print(f"  {k} -> {fp if fp else 'NOT FOUND'}")
+    print("=" * 100)
 
-    # Load data (NO LOGIN)
     WARRANTY_DATA["credit_df"], WARRANTY_DATA["debit_df"], WARRANTY_DATA["arbitration_df"], WARRANTY_DATA["source_df"] = process_warranty_data()
     WARRANTY_DATA["current_month_df"], WARRANTY_DATA["current_month_source_df"] = process_current_month_warranty()
-
-    # IMPORTANT: this line must be WARRANTY_DATA only
     WARRANTY_DATA["compensation_df"], WARRANTY_DATA["compensation_source_df"] = process_compensation_claim()
-
     WARRANTY_DATA["pr_approval_df"], WARRANTY_DATA["pr_approval_source_df"] = process_pr_approval()
 
-
-
-# Typo fix (safe)
-try:
-    WARRANTYY_DATA
-except NameError:
-    pass
 
 # =========================================================
 # ROUTES
@@ -573,6 +640,9 @@ except NameError:
 async def root():
     return HTMLResponse(DASHBOARD_HTML)
 
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/api/data")
 async def api_data():
@@ -595,51 +665,55 @@ async def api_data():
         "prApproval": df_to_records(WARRANTY_DATA["pr_approval_df"]),
     }
 
-
 @app.post("/api/export")
 async def api_export(request: Request):
-    data = await request.json()
-    division = data.get("division", "All")
-    export_type = data.get("type", "credit")
+    body = await request.json()
+    division = body.get("division", "All")
+    export_type = body.get("type", "credit")
 
+    # Pick Summary + Source like base
     if export_type == "credit":
-        df = WARRANTY_DATA["credit_df"]
+        summary_df = WARRANTY_DATA["credit_df"]
+        source_df = WARRANTY_DATA["source_df"]
     elif export_type == "debit":
-        df = WARRANTY_DATA["debit_df"]
+        summary_df = WARRANTY_DATA["debit_df"]
+        source_df = WARRANTY_DATA["source_df"]
     elif export_type == "arbitration":
-        df = WARRANTY_DATA["arbitration_df"]
+        summary_df = WARRANTY_DATA["arbitration_df"]
+        source_df = WARRANTY_DATA["source_df"]
     elif export_type == "currentmonth":
-        df = WARRANTY_DATA["current_month_df"]
+        summary_df = WARRANTY_DATA["current_month_df"]
+        source_df = WARRANTY_DATA["current_month_source_df"]
     elif export_type == "compensation":
-        df = WARRANTY_DATA["compensation_df"]
+        summary_df = WARRANTY_DATA["compensation_df"]
+        source_df = WARRANTY_DATA["compensation_source_df"]
     else:
-        df = WARRANTY_DATA["pr_approval_df"]
+        summary_df = WARRANTY_DATA["pr_approval_df"]
+        source_df = WARRANTY_DATA["pr_approval_source_df"]
 
-    if df is None or df.empty:
-        return JSONResponse({"error": "No data"}, status_code=400)
+    if summary_df is None or summary_df.empty:
+        return JSONResponse({"error": "No data to export"}, status_code=400)
 
-    if division not in ("All", "Grand Total") and "Division" in df.columns:
-        df_export = df[(df["Division"] == division) | (df["Division"] == "Grand Total")].copy()
-    else:
-        df_export = df.copy()
+    # Filter by division (keep Grand Total)
+    if division not in ("All", "Grand Total") and "Division" in summary_df.columns:
+        summary_df = summary_df[
+            (summary_df["Division"] == division) |
+            (summary_df["Division"] == "Grand Total")
+        ].copy()
 
+        if source_df is not None and not source_df.empty and "Division" in source_df.columns:
+            source_df = source_df[source_df["Division"] == division].copy()
+
+    # Workbook with 2 sheets: Summary + Detailed Data
     wb = Workbook()
-    ws = wb.active
-    ws.title = export_type[:20]
+    wb.remove(wb.active)
 
-    header_fill = PatternFill(start_color="FF8C00", end_color="FF8C00", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
+    ws1 = wb.create_sheet("Summary")
+    write_df_to_sheet(ws1, summary_df)
 
-    for col_idx, col_name in enumerate(df_export.columns, 1):
-        cell = ws.cell(row=1, column=col_idx, value=col_name)
-        cell.fill = header_fill
-        cell.font = header_font
-
-    for r_idx, row in enumerate(df_export.itertuples(index=False), 2):
-        for c_idx, val in enumerate(row, 1):
-            cell = ws.cell(row=r_idx, column=c_idx, value=val)
-            if isinstance(val, (int, float)):
-                cell.number_format = "#,##0.00"
+    if source_df is not None and not source_df.empty:
+        ws2 = wb.create_sheet("Detailed Data")
+        write_df_to_sheet(ws2, source_df)
 
     out = io.BytesIO()
     wb.save(out)
@@ -647,7 +721,7 @@ async def api_export(request: Request):
 
     filename = f"{export_type}_{division}_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
-        iter([out.getvalue()]),
+        out,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
