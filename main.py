@@ -1,9 +1,3 @@
-"""
-WARRANTY MANAGEMENT DASHBOARD - NO LOGIN VERSION
-Direct dashboard access without authentication
-All features preserved: 6 tabs, export, data processing
-"""
-
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
