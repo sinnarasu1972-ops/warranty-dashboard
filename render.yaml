@@ -2,14 +2,23 @@ services:
   - type: web
     name: warranty-dashboard
     env: python
-    pythonVersion: 3.12.10
-    buildCommand: pip install -r requirements.txt && find . -name "*.xlsx" -type f -exec cp {} /mnt/data/ \;
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    buildCommand: pip install -r requirements.txt
+
+    startCommand: >
+      bash -lc "
+      mkdir -p /mnt/data &&
+      cp -n ./*.xlsx /mnt/data/ 2>/dev/null || true &&
+      if [ -d ./Image ]; then mkdir -p /mnt/data/Image && cp -n ./Image/* /mnt/data/Image/ 2>/dev/null || true; fi &&
+      uvicorn main:app --host 0.0.0.0 --port $PORT
+      "
+
     envVars:
       - key: RENDER
         value: "true"
       - key: DATA_DIR
         value: /mnt/data
+
     disk:
       name: warranty_data
       mountPath: /mnt/data
