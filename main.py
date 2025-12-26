@@ -542,27 +542,22 @@ app.add_middleware(
 # =========================================================
 @app.on_event("startup")
 def startup():
-    print("=" * 100)
+    print("=" * 90)
     print("WARRANTY DASHBOARD START")
     print(f"Environment: {'RENDER' if IS_RENDER else 'LOCAL'}")
     print(f"PORT: {PORT}")
     print(f"DATA_DIR: {DATA_DIR}")
-    print("Candidate directories:")
-    for d in CANDIDATE_DIRS:
-        items = safe_listdir(d)
-        print(f"  - {d} : {len(items)} items")
-    print("=" * 100)
+    print("=" * 90)
 
-    # Show file resolution
-    for k, fname in FILES.items():
-        p = find_file(fname)
-        print(f"{'OK' if p else 'MISSING'} : {fname} -> {p if p else ''}")
-
-    # Load
+    # Load data (NO LOGIN)
     WARRANTY_DATA["credit_df"], WARRANTY_DATA["debit_df"], WARRANTY_DATA["arbitration_df"], WARRANTY_DATA["source_df"] = process_warranty_data()
     WARRANTY_DATA["current_month_df"], WARRANTY_DATA["current_month_source_df"] = process_current_month_warranty()
-    WARRANTY_DATA["compensation_df"], WARRANTYY_DATA["compensation_source_df"] = process_compensation_claim()  # typo fix below
+
+    # IMPORTANT: this line must be WARRANTY_DATA only
+    WARRANTY_DATA["compensation_df"], WARRANTY_DATA["compensation_source_df"] = process_compensation_claim()
+
     WARRANTY_DATA["pr_approval_df"], WARRANTY_DATA["pr_approval_source_df"] = process_pr_approval()
+
 
 
 # Typo fix (safe)
