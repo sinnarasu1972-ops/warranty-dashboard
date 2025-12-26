@@ -671,61 +671,83 @@ async def api_export(request: Request):
     division = body.get("division", "All")
     export_type = body.get("type", "credit")
 
-    # Pick Summary + Source like base
+    # -------------------------------
+    # Select summary + source safely
+    # -------------------------------
+    summary_df = None
+    source_df = None
+
     if export_type == "credit":
         summary_df = WARRANTY_DATA["credit_df"]
         source_df = WARRANTY_DATA["source_df"]
+
     elif export_type == "debit":
         summary_df = WARRANTY_DATA["debit_df"]
         source_df = WARRANTY_DATA["source_df"]
+
     elif export_type == "arbitration":
         summary_df = WARRANTY_DATA["arbitration_df"]
         source_df = WARRANTY_DATA["source_df"]
+
     elif export_type == "currentmonth":
         summary_df = WARRANTY_DATA["current_month_df"]
         source_df = WARRANTY_DATA["current_month_source_df"]
+
     elif export_type == "compensation":
         summary_df = WARRANTY_DATA["compensation_df"]
         source_df = WARRANTY_DATA["compensation_source_df"]
-    else:
+
+    elif export_type == "pr_approval":
         summary_df = WARRANTY_DATA["pr_approval_df"]
         source_df = WARRANTY_DATA["pr_approval_source_df"]
 
     if summary_df is None or summary_df.empty:
         return JSONResponse({"error": "No data to export"}, status_code=400)
 
-    # Filter by division (keep Grand Total)
-    if division not in ("All", "Grand Total") and "Division" in summary_df.columns:
-        summary_df = summary_df[
-            (summary_df["Division"] == division) |
-            (summary_df["Division"] == "Grand Total")
-        ].copy()
+    # -------------------------------
+    # Filter SUMMARY (keep Grand Total)
+    # -------------------------------
+    summary_export = summary_df.copy()
 
-        if source_df is not None and not source_df.empty and "Division" in source_df.columns:
-            source_df = source_df[source_df["Division"] == division].copy()
+    if division not in ("All", "Grand Total") and "Division" in summary_export.columns:
+        summary_export = summary_export[
+            (summary_export["Division"] == division) |
+            (summary_export["Division"] == "Grand Total")
+        ]
 
-    # Workbook with 2 sheets: Summary + Detailed Data
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    ws1 = wb.create_sheet("Summary")
-    write_df_to_sheet(ws1, summary_df)
-
+    # -------------------------------
+    # Filter SOURCE (ONLY if possible)
+    # -------------------------------
+    source_export = None
     if source_df is not None and not source_df.empty:
-        ws2 = wb.create_sheet("Detailed Data")
-        write_df_to_sheet(ws2, source_df)
+        source_export = source_df.copy()
+        if division not in ("All", "Grand Total") and "Division" in source_export.columns:
+            source_export = source_export[source_export["Division"] == division]
 
-    out = io.BytesIO()
-    wb.save(out)
-    out.seek(0)
+    # -------------------------------
+    # Create Excel
+    # -------------------------------
+    wb = Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+
+    write_df_to_sheet(ws_summary, summary_export)
+
+    if source_export is not None and not source_export.empty:
+        ws_detail = wb.create_sheet("Detailed Data")
+        write_df_to_sheet(ws_detail, source_export)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
 
     filename = f"{export_type}_{division}_{datetime.now().strftime('%Y%m%d')}.xlsx"
-    return StreamingResponse(
-        out,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
 
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 # =========================================================
 # MAIN
