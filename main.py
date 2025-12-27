@@ -39,7 +39,7 @@ WARRANTY_DATA = {
 
 def process_pr_approval():
     """Process PR Approval data and return summary dataframe"""
-    # ✅ FIXED: Correct file path pointing to Pr_Approval_Claims_Merged.xlsx
+    #  FIXED: Correct file path pointing to Pr_Approval_Claims_Merged.xlsx
     input_path = r"D:\Power BI New\warranty dashboard render\Pr_Approval_Claims_Merged.xlsx"
     
     try:
@@ -122,7 +122,7 @@ def process_pr_approval():
         else:
             summary_df = pd.DataFrame()
 
-        print("\n✓ PR Approval processing completed successfully")
+        print("\n PR Approval processing completed successfully")
         if not summary_df.empty:
             print(f"  Total Requests: {len(df_summary_display)}")
             if 'App. Claim Amt from M&M' in df_summary_display.columns:
@@ -147,7 +147,7 @@ def process_compensation_claim():
     try:
         # Load the data - read first sheet
         df = pd.read_excel(input_path)
-        print("✓ Compensation Claim data loaded successfully")
+        print(" Compensation Claim data loaded successfully")
         print(f"  Available columns: {df.columns.tolist()[:10]}...")
         print(f"  Total rows in source data: {len(df)}")
 
@@ -247,7 +247,7 @@ def process_compensation_claim():
         else:
             summary_df = pd.DataFrame()
 
-        print("\n✓ Compensation Claim processing completed successfully")
+        print("\n Compensation Claim processing completed successfully")
         if not summary_df.empty:
             print(f"  Total Claims: {len(df_filtered)}")
             if 'Claim Amount' in df_filtered.columns:
@@ -271,7 +271,7 @@ def process_current_month_warranty():
     try:
         # Load the data - sheet name is "Pending Warranty Claim Details"
         df = pd.read_excel(input_path, sheet_name='Pending Warranty Claim Details')
-        print("✓ Current Month Warranty data loaded successfully")
+        print(" Current Month Warranty data loaded successfully")
         print(f"  Available columns: {df.columns.tolist()[:10]}...")
         print(f"  Total rows in source data: {len(df)}")
 
@@ -321,7 +321,7 @@ def process_current_month_warranty():
         }
         summary_df = pd.concat([summary_df, pd.DataFrame([grand_total])], ignore_index=True)
 
-        print("\n✓ Current Month Warranty processing completed successfully")
+        print("\n Current Month Warranty processing completed successfully")
         print(f"  Total Pending Claims Spares: {grand_total['Pending Claims Spares Count']}")
         print(f"  Total Pending Claims Labour: {grand_total['Pending Claims Labour Count']}")
         
@@ -343,7 +343,7 @@ def process_warranty_data():
     try:
         # Load the data
         df = pd.read_excel(input_path, sheet_name='Sheet1')
-        print("✓ Warranty data loaded successfully")
+        print(" Warranty data loaded successfully")
         print(f"  Available columns: {df.columns.tolist()[:5]}...")
         print(f"  Total rows in source data: {len(df)}")
 
@@ -472,7 +472,7 @@ def process_warranty_data():
             grand_total_arb[col] = arbitration_df[col].sum()
         arbitration_df = pd.concat([arbitration_df, pd.DataFrame([grand_total_arb])], ignore_index=True)
 
-        print("\n✓ Warranty data processing completed successfully")
+        print("\n Warranty data processing completed successfully")
         return credit_df, debit_df, arbitration_df, df
 
     except FileNotFoundError:
@@ -510,10 +510,10 @@ def get_mahindra_images():
                             file_lower = file.lower()
                             if 'mahindra' in file_lower or 'logo' in file_lower or 'hero' in file_lower:
                                 branding_images.append(img_dict)
-                                print(f"  ✓ Loaded Branding: {file}")
+                                print(f"   Loaded Branding: {file}")
                             else:
                                 vehicle_images.append(img_dict)
-                                print(f"  ✓ Loaded Vehicle: {file}")
+                                print(f"   Loaded Vehicle: {file}")
                     except Exception as e:
                         print(f"   Could not load {file}: {e}")
         except Exception as e:
@@ -1400,11 +1400,11 @@ DASHBOARD_HTML = """
 <body>
     <nav class="navbar navbar-dark">
         <div class="container-fluid">
-            <span class="navbar-brand">📊 Unnati Motors Warranty Management Dashboard</span>
+            <span class="navbar-brand"> Unnati Motors Warranty Management Dashboard</span>
             <div>
                 <span style="color: white; margin-right: 20px;" id="userDisplay"></span>
-                <button onclick="openChangePasswordModal()" style="background: #FFD54F; border: none; color: #333; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; margin-right: 10px; transition: all 0.3s ease; font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">🔐 Change Password</button>
-                <a href="/logout" class="logout-btn">🚪 Logout</a>
+                <button onclick="openChangePasswordModal()" style="background: #FFD54F; border: none; color: #333; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; margin-right: 10px; transition: all 0.3s ease; font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);"> Change Password</button>
+                <a href="/logout" class="logout-btn"> Logout</a>
             </div>
         </div>
     </nav>
@@ -1420,17 +1420,17 @@ DASHBOARD_HTML = """
             <div id="warrantyTabs" style="display: none;">
                 <!-- Tab Navigation -->
                 <div class="nav-tabs">
-                    <button class="nav-link active" onclick="switchTab('credit')">💰 Warranty Credit</button>
-                    <button class="nav-link" onclick="switchTab('debit')">💳 Warranty Debit</button>
-                    <button class="nav-link" onclick="switchTab('arbitration')">⚖️ Claim Arbitration</button>
-                    <button class="nav-link" onclick="switchTab('currentmonth')">📅 Current Month Warranty</button>
-                    <button class="nav-link" onclick="switchTab('compensation')">🚚 Compensation Claim</button>
-                    <button class="nav-link" onclick="switchTab('pr_approval')">✅ PR Approval</button>
+                    <button class="nav-link active" onclick="switchTab('credit')"> Warranty Credit</button>
+                    <button class="nav-link" onclick="switchTab('debit')"> Warranty Debit</button>
+                    <button class="nav-link" onclick="switchTab('arbitration')"> Claim Arbitration</button>
+                    <button class="nav-link" onclick="switchTab('currentmonth')"> Current Month Warranty</button>
+                    <button class="nav-link" onclick="switchTab('compensation')"> Compensation Claim</button>
+                    <button class="nav-link" onclick="switchTab('pr_approval')"> PR Approval</button>
                 </div>
 
                 <!-- EXPORT SECTION -->
                 <div class="export-section">
-                    <h3>📥 Export to Excel</h3>
+                    <h3> Export to Excel</h3>
                     <div class="export-controls">
                         <div class="export-control-group">
                             <label for="divisionFilter">Division:</label>
@@ -1453,7 +1453,7 @@ DASHBOARD_HTML = """
                         </div>
                         
                         <button onclick="exportToExcel()" class="export-btn" id="exportBtn">
-                            📥 Export to Excel
+                             Export to Excel
                         </button>
                     </div>
                 </div>
@@ -1531,8 +1531,8 @@ DASHBOARD_HTML = """
     <div id="changePasswordModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                🔐 Change Password
-                <button class="modal-close-btn" onclick="closeChangePasswordModal()">✕</button>
+                 Change Password
+                <button class="modal-close-btn" onclick="closeChangePasswordModal()"></button>
             </div>
             
             <div id="modalMessage" class="modal-message"></div>
@@ -1573,8 +1573,8 @@ DASHBOARD_HTML = """
             
             try {
                 console.log('========== DASHBOARD LOAD START ==========');
-                console.log('🔍 Fetching warranty data with credentials...');
-                console.log('📌 Current cookies:', document.cookie);
+                console.log(' Fetching warranty data with credentials...');
+                console.log(' Current cookies:', document.cookie);
                 
                 const response = await fetch('/api/warranty-data', {
                     method: 'GET',
@@ -1585,11 +1585,11 @@ DASHBOARD_HTML = """
                     }
                 });
                 
-                console.log('📊 Response received');
-                console.log('📊 Response status:', response.status);
+                console.log(' Response received');
+                console.log(' Response status:', response.status);
                 
                 if (response.status === 401) {
-                    console.error('❌ Unauthorized (401) - Session expired');
+                    console.error(' Unauthorized (401) - Session expired');
                     alert('Session expired. Please login again.');
                     window.location.href = '/login-page';
                     return;
@@ -1597,12 +1597,12 @@ DASHBOARD_HTML = """
                 
                 if (!response.ok) {
                     const text = await response.text();
-                    console.error('❌ Response not OK:', response.status);
+                    console.error(' Response not OK:', response.status);
                     throw new Error('Failed to load warranty data: HTTP ' + response.status);
                 }
                 
                 warrantyData = await response.json();
-                console.log('✅ Warranty data loaded successfully');
+                console.log(' Warranty data loaded successfully');
                 
                 displayCreditTable(warrantyData.credit);
                 displayDebitTable(warrantyData.debit);
@@ -1615,10 +1615,10 @@ DASHBOARD_HTML = """
                 
                 spinner.style.display = 'none';
                 tabs.style.display = 'block';
-                console.log('✅ Dashboard rendered successfully');
+                console.log(' Dashboard rendered successfully');
             } catch (error) {
                 console.error(' Error loading dashboard:', error);
-                spinner.innerHTML = '<p style="color: red; padding: 20px; text-align: center;"> Error loading warranty data<br><br><button onclick="location.reload();" style="padding: 10px 20px; background: #FF8C00; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">🔄 Refresh</button></p>';
+                spinner.innerHTML = '<p style="color: red; padding: 20px; text-align: center;"> Error loading warranty data<br><br><button onclick="location.reload();" style="padding: 10px 20px; background: #FF8C00; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;"> Refresh</button></p>';
             }
         }
         
@@ -1745,7 +1745,7 @@ DASHBOARD_HTML = """
 
         // ===== EXPORT FUNCTIONS =====
         function loadDivisions() {
-            console.log('📋 Loading divisions from warranty data...');
+            console.log(' Loading divisions from warranty data...');
             const divisions = new Set();
             
             const currentType = document.getElementById('exportType').value;
@@ -1797,7 +1797,7 @@ DASHBOARD_HTML = """
                 return;
             }
             
-            console.log(`📊 Exporting ${type} data for division: ${division}`);
+            console.log(` Exporting ${type} data for division: ${division}`);
             exportBtn.disabled = true;
             exportBtn.textContent = '⏳ Exporting...';
             
@@ -1836,13 +1836,13 @@ DASHBOARD_HTML = """
                 alert(' Export failed: ' + error.message);
             } finally {
                 exportBtn.disabled = false;
-                exportBtn.textContent = '📥 Export to Excel';
+                exportBtn.textContent = ' Export to Excel';
             }
         }
         
         window.onload = function() {
             console.log('========== DASHBOARD PAGE ONLOAD ==========');
-            console.log('🚀 Dashboard page loaded');
+            console.log(' Dashboard page loaded');
             
             document.getElementById('userDisplay').textContent = 'Welcome to Warranty Dashboard';
             loadDashboard();
@@ -1972,29 +1972,17 @@ async def change_password(request: Request, session_id: str = Cookie(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/export-to-excel")
-async def export_to_excel(request: Request, session_id: str = Cookie(None)):
+async def export_to_excel(request: Request):
     """Export selected division data to Excel with summary and detailed sheets"""
     try:
         print(f" Export request received")
-        
-        # Verify authentication
-        if not session_id:
-            print(f" No session_id provided")
-            raise HTTPException(status_code=401, detail="Not authenticated - no session")
-        
-        user_id = verify_session(session_id)
-        if not user_id:
-            print(f" Session verification failed")
-            raise HTTPException(status_code=401, detail="Session expired or invalid")
-        
-        print(f" User verified: {user_id}")
         
         # Get request body
         body = await request.json()
         selected_division = body.get('division', 'All')
         export_type = body.get('type', 'credit')
         
-        print(f"📋 Export Type: {export_type}, Division: {selected_division}")
+        print(f" Export Type: {export_type}, Division: {selected_division}")
         
         # Validate export type
         if export_type not in ['credit', 'debit', 'arbitration', 'currentmonth', 'compensation', 'pr_approval']:
@@ -2023,7 +2011,7 @@ async def export_to_excel(request: Request, session_id: str = Cookie(None)):
         if df is None or df.empty:
             raise HTTPException(status_code=500, detail="No data available for export")
         
-        print(f"📊 Original data rows: {len(df)}")
+        print(f" Original data rows: {len(df)}")
         
         # Reverse dealer mapping
         dealer_mapping = {
@@ -2050,7 +2038,7 @@ async def export_to_excel(request: Request, session_id: str = Cookie(None)):
         else:
             df_export = df.copy()
         
-        print(f"📊 Filtered data rows: {len(df_export)}")
+        print(f" Filtered data rows: {len(df_export)}")
         
         # Create workbook with styling
         wb = Workbook()
@@ -2208,7 +2196,7 @@ async def export_to_excel(request: Request, session_id: str = Cookie(None)):
                 detail_df['Month_Order'] = detail_df['Month'].apply(lambda x: month_order.index(x) if x in month_order else 999)
                 detail_df = detail_df.sort_values('Month_Order').drop(['Month', 'Month_Order'], axis=1)
                 
-                print(f"📊 Detailed data rows for {selected_division}: {len(detail_df)}")
+                print(f" Detailed data rows for {selected_division}: {len(detail_df)}")
                 
                 # Write headers for sheet 2
                 for col_idx, column in enumerate(detail_df.columns, 1):
@@ -2318,7 +2306,7 @@ async def export_to_excel(request: Request, session_id: str = Cookie(None)):
                     pending_df['Month_Order'] = pending_df['Month'].apply(lambda x: month_order.index(x) if x in month_order else 999)
                     pending_df = pending_df.sort_values('Month_Order').drop(['Month', 'Month_Order'], axis=1)
                     
-                    print(f"📊 Pending Arbitration rows for {selected_division}: {len(pending_df)}")
+                    print(f" Pending Arbitration rows for {selected_division}: {len(pending_df)}")
                     
                     # Write headers for sheet 3
                     for col_idx, column in enumerate(pending_df.columns, 1):
@@ -2509,7 +2497,7 @@ async def export_current_month_warranty(selected_division: str):
                     column_letter = ws2.cell(row=1, column=col_idx).column_letter
                     ws2.column_dimensions[column_letter].width = max_length
                 
-                print(f"📊 Pending Spares Claims rows: {len(spares_df)}")
+                print(f" Pending Spares Claims rows: {len(spares_df)}")
         
         # ==================== SHEET 3: PENDING LABOUR CLAIMS ====================
         if source_df is not None and not source_df.empty:
@@ -2565,7 +2553,7 @@ async def export_current_month_warranty(selected_division: str):
                     column_letter = ws3.cell(row=1, column=col_idx).column_letter
                     ws3.column_dimensions[column_letter].width = max_length
                 
-                print(f"📊 Pending Labour Claims rows: {len(labour_df)}")
+                print(f" Pending Labour Claims rows: {len(labour_df)}")
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -2712,7 +2700,7 @@ async def export_compensation_claim(selected_division: str):
                     column_letter = ws2.cell(row=1, column=col_idx).column_letter
                     ws2.column_dimensions[column_letter].width = max_length
                 
-                print(f"📊 Compensation Claim details rows: {len(detail_df)}")
+                print(f" Compensation Claim details rows: {len(detail_df)}")
         
         # Save to BytesIO
         output = io.BytesIO()
@@ -2934,23 +2922,10 @@ async def api_login(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/warranty-data")
-async def get_warranty_data(session_id: str = Cookie(None)):
+async def get_warranty_data():
     """Get warranty data (Credit, Debit, Arbitration, Current Month)"""
     try:
-        print(f"🔍 Warranty data request received")
-        
-        if not session_id:
-            print(f" No session_id cookie found")
-            raise HTTPException(status_code=401, detail="Not authenticated - no session")
-        
-        user_id = verify_session(session_id)
-        print(f"📌 Verified user_id: {user_id}")
-        
-        if not user_id:
-            print(f" Session verification failed")
-            raise HTTPException(status_code=401, detail="Session expired or invalid")
-        
-        print(f" Session valid for user: {user_id}")
+        print(f" Warranty data request received")
         
         if WARRANTY_DATA['credit_df'] is None:
             print(f" Warranty data not loaded")
@@ -2963,7 +2938,7 @@ async def get_warranty_data(session_id: str = Cookie(None)):
                 "prApproval": []
             }
         
-        print(f"📊 Processing warranty data...")
+        print(f" Processing warranty data...")
         credit_records = WARRANTY_DATA['credit_df'].to_dict('records')
         debit_records = WARRANTY_DATA['debit_df'].to_dict('records')
         arbitration_records = WARRANTY_DATA['arbitration_df'].to_dict('records')
@@ -3005,9 +2980,6 @@ async def get_warranty_data(session_id: str = Cookie(None)):
             "compensation": compensation_records,
             "prApproval": pr_approval_records
         }
-    except HTTPException as e:
-        print(f" HTTPException: {e.detail}")
-        raise
     except Exception as e:
         print(f" Unexpected error: {e}")
         import traceback
@@ -3020,19 +2992,9 @@ async def login_page():
     return HTMLResponse(content=LOGIN_PAGE)
 
 @app.get("/dashboard")
-async def dashboard(session_id: str = Cookie(None)):
-    """Serve dashboard only if authenticated"""
-    try:
-        if not session_id:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        user_id = verify_session(session_id)
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Session expired")
-        
-        return HTMLResponse(content=DASHBOARD_HTML)
-    except HTTPException:
-        return RedirectResponse(url="/login-page", status_code=302)
+async def dashboard():
+    """Serve dashboard (no login required)"""
+    return HTMLResponse(content=DASHBOARD_HTML)
 
 @app.get("/logout")
 async def logout(session_id: str = Cookie(None)):
@@ -3044,15 +3006,9 @@ async def logout(session_id: str = Cookie(None)):
     return response
 
 @app.get("/")
-async def root(session_id: str = Cookie(None)):
-    """Root route - redirect to dashboard or login"""
-    try:
-        if session_id and verify_session(session_id):
-            return RedirectResponse(url="/dashboard", status_code=302)
-    except:
-        pass
-    
-    return RedirectResponse(url="/login-page", status_code=302)
+async def root():
+    """Root route - directly serve dashboard (no login required)"""
+    return HTMLResponse(content=DASHBOARD_HTML)
 
 # ==================== STARTUP ====================
 
@@ -3084,10 +3040,10 @@ if __name__ == "__main__":
     print("\n" + "=" * 100)
     print(f" SERVER READY - Warranty Dashboard")
     print("=" * 100)
-    print(f"🌐 PORT: 8001")
-    print(f"🌐 Login URL: http://localhost:{port}/login-page")
-    print(f"🌐 Network URL: http://{local_ip}:{port}/login-page")
-    print(f"\n🔐 Test Credentials:")
+    print(f" PORT: 8001")
+    print(f" Login URL: http://localhost:{port}/login-page")
+    print(f" Network URL: http://{local_ip}:{port}/login-page")
+    print(f"\n Test Credentials:")
     print(f"   User ID: 11724")
     print(f"   Password: un001@123")
     print("\n" + "=" * 100 + "\n")
