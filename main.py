@@ -37,10 +37,32 @@ WARRANTY_DATA = {
     'pr_approval_source_df': None
 }
 
+def find_data_file(filename):
+    """Find data file in multiple possible locations"""
+    possible_paths = [
+        f"/mnt/data/{filename}",
+        filename,
+        f"./{filename}",
+        f"Data/{filename}",
+        f"data/{filename}",
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"  Found: {filename} at {path}")
+            return path
+    
+    print(f"  WARNING: {filename} not found. Checked: {possible_paths}")
+    return None
+
 def process_pr_approval():
     """Process PR Approval data and return summary dataframe"""
     #  FIXED: Correct file path pointing to Pr_Approval_Claims_Merged.xlsx
-    input_path = r"D:\Power BI New\warranty dashboard render\Pr_Approval_Claims_Merged.xlsx"
+    input_path = find_data_file('Pr_Approval_Claims_Merged.xlsx')
+    
+    if input_path is None:
+        print("  PR Approval file not found - returning empty data")
+        return None, None
     
     try:
         # Load the data - read first sheet
@@ -142,7 +164,11 @@ def process_pr_approval():
 
 def process_compensation_claim():
     """Process compensation claim data and return summary dataframe"""
-    input_path = r"D:\Power BI New\Warranty Debit\Transit_Claims_Merged.xlsx"
+    input_path = find_data_file('Transit_Claims_Merged.xlsx')
+    
+    if input_path is None:
+        print("  Compensation Claim file not found - returning empty data")
+        return None, None
     
     try:
         # Load the data - read first sheet
@@ -266,7 +292,11 @@ def process_compensation_claim():
 
 def process_current_month_warranty():
     """Process current month warranty data and return summary dataframe"""
-    input_path = r"D:\Power BI New\Warranty Debit\Pending Warranty Claim Details.xlsx"
+    input_path = find_data_file('Pending Warranty Claim Details.xlsx')
+    
+    if input_path is None:
+        print("  Current Month Warranty file not found - returning empty data")
+        return None, None
     
     try:
         # Load the data - sheet name is "Pending Warranty Claim Details"
@@ -338,7 +368,11 @@ def process_current_month_warranty():
 
 def process_warranty_data():
     """Process warranty data and return credit, debit, and arbitration dataframes"""
-    input_path = r"D:\Power BI New\Warranty Debit\Warranty Debit.xlsx"
+    input_path = find_data_file('Warranty Debit.xlsx')
+    
+    if input_path is None:
+        print("  Warranty Debit file not found - returning empty data")
+        return None, None, None, None
     
     try:
         # Load the data
