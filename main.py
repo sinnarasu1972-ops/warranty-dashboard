@@ -1026,7 +1026,7 @@ DASHBOARD_HTML = """
             max-width: 1400px;
             margin: 0 auto;
             display: flex;
-            justify-content: space-between;
+            justify-content: center;
             align-items: center;
             padding: 0 30px;
         }
@@ -1034,23 +1034,6 @@ DASHBOARD_HTML = """
         .navbar-brand {
             font-size: 24px;
             font-weight: 700;
-        }
-        
-        .logout-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid white;
-            color: white;
-            padding: 8px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 600;
-        }
-        
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            color: white;
-            text-decoration: none;
         }
         
         .container {
@@ -1434,12 +1417,7 @@ DASHBOARD_HTML = """
 <body>
     <nav class="navbar navbar-dark">
         <div class="container-fluid">
-            <span class="navbar-brand"> Unnati Motors Warranty Management Dashboard</span>
-            <div>
-                <span style="color: white; margin-right: 20px;" id="userDisplay"></span>
-                <button onclick="openChangePasswordModal()" style="background: #FFD54F; border: none; color: #333; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; margin-right: 10px; transition: all 0.3s ease; font-size: 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);"> Change Password</button>
-                <a href="/logout" class="logout-btn"> Logout</a>
-            </div>
+            <span class="navbar-brand">Unnati Motors Warranty Management Dashboard</span>
         </div>
     </nav>
     
@@ -1561,39 +1539,6 @@ DASHBOARD_HTML = """
         </div>
     </div>
     
-    <!-- Change Password Modal -->
-    <div id="changePasswordModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                 Change Password
-                <button class="modal-close-btn" onclick="closeChangePasswordModal()"></button>
-            </div>
-            
-            <div id="modalMessage" class="modal-message"></div>
-            
-            <form id="changePasswordForm" onsubmit="handleChangePassword(event)">
-                <div class="form-group">
-                    <label for="currentPassword">Current Password:</label>
-                    <input type="password" id="currentPassword" name="currentPassword" required placeholder="Enter current password">
-                </div>
-                
-                <div class="form-group">
-                    <label for="newPassword">New Password:</label>
-                    <input type="password" id="newPassword" name="newPassword" required placeholder="Enter new password" minlength="6">
-                </div>
-                
-                <div class="form-group">
-                    <label for="confirmPassword">Confirm New Password:</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Confirm new password" minlength="6">
-                </div>
-                
-                <div class="modal-buttons">
-                    <button type="button" class="btn-cancel" onclick="closeChangePasswordModal()">Cancel</button>
-                    <button type="submit" class="btn-change">Change Password</button>
-                </div>
-            </form>
-        </div>
-    </div>
     
     <script>
         let warrantyData = {};
@@ -1878,79 +1823,8 @@ DASHBOARD_HTML = """
             console.log('========== DASHBOARD PAGE ONLOAD ==========');
             console.log(' Dashboard page loaded');
             
-            document.getElementById('userDisplay').textContent = 'Welcome to Warranty Dashboard';
             loadDashboard();
         };
-        
-        function openChangePasswordModal() {
-            document.getElementById('changePasswordModal').classList.add('show');
-            document.getElementById('modalMessage').classList.remove('success', 'error');
-            document.getElementById('modalMessage').textContent = '';
-            document.getElementById('changePasswordForm').reset();
-        }
-        
-        function closeChangePasswordModal() {
-            document.getElementById('changePasswordModal').classList.remove('show');
-            document.getElementById('changePasswordForm').reset();
-        }
-        
-        async function handleChangePassword(event) {
-            event.preventDefault();
-            
-            const currentPassword = document.getElementById('currentPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            const messageDiv = document.getElementById('modalMessage');
-            
-            messageDiv.classList.remove('success', 'error');
-            messageDiv.textContent = '';
-            
-            if (!currentPassword || !newPassword || !confirmPassword) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' All fields are required';
-                return;
-            }
-            
-            if (newPassword !== confirmPassword) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' New passwords do not match';
-                return;
-            }
-            
-            if (newPassword.length < 6) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' Password must be at least 6 characters';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/change-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        current_password: currentPassword,
-                        new_password: newPassword
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    messageDiv.classList.add('success');
-                    messageDiv.textContent = ' Password changed successfully!';
-                    setTimeout(() => closeChangePasswordModal(), 2000);
-                } else {
-                    messageDiv.classList.add('error');
-                    messageDiv.textContent = ' ' + (data.detail || 'Error changing password');
-                }
-            } catch (error) {
-                messageDiv.classList.add('error');
-                messageDiv.textContent = ' Error: ' + error.message;
-            }
-        }
     </script>
 </body>
 </html>
@@ -3030,14 +2904,6 @@ async def dashboard():
     """Serve dashboard (no login required)"""
     return HTMLResponse(content=DASHBOARD_HTML)
 
-@app.get("/logout")
-async def logout(session_id: str = Cookie(None)):
-    """Logout user"""
-    if session_id in SESSIONS:
-        del SESSIONS[session_id]
-    response = RedirectResponse(url="/login-page", status_code=302)
-    response.delete_cookie("session_id")
-    return response
 
 @app.get("/")
 async def root():
