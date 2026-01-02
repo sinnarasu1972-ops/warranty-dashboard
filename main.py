@@ -1,12 +1,3 @@
-# main.py
-# Unnati Warranty Management Dashboard (No Login / No Change Password / No Logout)
-# Features:
-# - Loads all Excel files from local Windows paths OR from Render repo directory
-# - Shows tables for Credit, Debit, Arbitration, Current Month, Compensation, PR Approval
-# - Excel Export works (uses FileResponse + temp file)
-# - Includes "Detailed Data" sheets for Credit/Debit/Arbitration (and Pending Arb for Arbitration)
-# - Includes Summary + Details for Current Month / Compensation / PR Approval
-
 import os
 import io
 import socket
@@ -501,207 +492,572 @@ def save_wb_as_temp_file(wb: Workbook, filename: str, background_tasks: Backgrou
 
 
 # =========================
-# DASHBOARD HTML (NO LOGIN)
+# DASHBOARD HTML (MOBILE-RESPONSIVE)
 # =========================
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Unnati Motors Warranty Management Dashboard</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
+    
+    :root {
+      --primary-color: #FF8C00;
+      --primary-dark: #FF6B35;
+      --success-color: #4CAF50;
+      --text-dark: #333;
+      --text-light: #666;
+      --border-light: #eee;
+      --bg-light: #fafafa;
+      --bg-orange-light: #fff8f3;
+      --bg-orange-lighter: #ffe8d6;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
+
+    /* ===== NAVBAR ===== */
     .navbar {
-      background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
       color: #fff;
-      padding: 16px 0;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      padding: 12px 16px;
+      box-shadow: var(--shadow-md);
       position: sticky;
       top: 0;
       z-index: 100;
+      width: 100%;
     }
+
     .navbar .container-fluid {
       max-width: 1400px;
       margin: 0 auto;
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding: 0 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
     }
-    .navbar-brand { font-size: 22px; font-weight: 800; }
-    .status { font-weight: 700; opacity: 0.95; }
 
+    .navbar-brand {
+      font-size: clamp(16px, 5vw, 22px);
+      font-weight: 800;
+      white-space: nowrap;
+      flex: 0 1 auto;
+      letter-spacing: -0.5px;
+    }
+
+    .status {
+      font-weight: 700;
+      opacity: 0.95;
+      font-size: clamp(12px, 3vw, 14px);
+      white-space: nowrap;
+    }
+
+    /* ===== CONTAINER ===== */
     .container {
       max-width: 1400px;
-      margin: 30px auto;
-      padding: 0 20px;
+      margin: 16px auto;
+      padding: 0 12px;
+      width: 100%;
     }
 
     .dashboard-content {
       background: #fff;
       border-radius: 12px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      padding: 30px;
+      box-shadow: var(--shadow-md);
+      padding: 16px;
     }
 
-    .nav-tabs {
-      border-bottom: 2px solid #FF8C00;
-      margin-bottom: 20px;
-      display:flex;
-      gap: 8px;
-      flex-wrap: wrap;
+    @media (min-width: 768px) {
+      .dashboard-content {
+        padding: 30px;
+      }
+
+      .container {
+        margin: 30px auto;
+        padding: 0 20px;
+      }
     }
+
+    /* ===== TABS ===== */
+    .nav-tabs {
+      border-bottom: 2px solid var(--primary-color);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 8px;
+      scroll-behavior: smooth;
+    }
+
+    .nav-tabs::-webkit-scrollbar {
+      height: 4px;
+    }
+
+    .nav-tabs::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .nav-tabs::-webkit-scrollbar-thumb {
+      background: var(--primary-color);
+      border-radius: 4px;
+    }
+
     .nav-tabs .nav-link {
-      color: #666;
+      color: var(--text-light);
       font-weight: 700;
       border: none;
       border-bottom: 3px solid transparent;
-      padding: 10px 14px;
+      padding: 8px 10px;
       cursor: pointer;
       background: transparent;
       transition: all 0.2s ease;
       border-radius: 8px 8px 0 0;
+      white-space: nowrap;
+      font-size: clamp(11px, 2.5vw, 13px);
+      flex-shrink: 0;
+      user-select: none;
     }
+
+    .nav-tabs .nav-link:active {
+      transform: scale(0.98);
+    }
+
     .nav-tabs .nav-link:hover {
-      color: #FF8C00;
-      border-bottom-color: #FF8C00;
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
     }
+
     .nav-tabs .nav-link.active {
-      color: #FF8C00;
-      border-bottom-color: #FF8C00;
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
     }
 
-    .tab-content { display:none; }
-    .tab-content.active { display:block; }
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.3s ease-in;
+    }
 
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* ===== TABLE TITLE ===== */
     .table-title {
-      font-size: 15px;
+      font-size: clamp(13px, 3vw, 15px);
       font-weight: 800;
-      color: #FF8C00;
-      margin-bottom: 10px;
+      color: var(--primary-color);
+      margin-bottom: 12px;
+      padding: 0 4px;
+      word-break: break-word;
     }
 
-    .table-wrapper { overflow-x:auto; }
+    /* ===== TABLE WRAPPER ===== */
+    .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 8px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 16px;
+      position: relative;
+    }
 
+    .table-wrapper::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 40px;
+      background: linear-gradient(to left, rgba(255,255,255,0.8), transparent);
+      pointer-events: none;
+      border-radius: 0 8px 8px 0;
+    }
+
+    /* ===== DATA TABLE ===== */
     .data-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 12px;
+      margin-top: 8px;
+      font-size: clamp(10px, 2.5vw, 12px);
+      background: #fff;
+      min-width: 100%;
     }
+
     .data-table thead th {
-      background: linear-gradient(135deg, #FF8C00 0%, #FF6B35 100%);
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
       color: #fff;
-      padding: 10px 10px;
+      padding: 10px 8px;
       text-align: center;
       font-weight: 800;
-      font-size: 11px;
+      font-size: clamp(9px, 2vw, 11px);
       border: none;
       white-space: nowrap;
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
+
     .data-table tbody td {
-      padding: 9px 10px;
-      border-bottom: 1px solid #eee;
+      padding: 8px 8px;
+      border-bottom: 1px solid var(--border-light);
       text-align: right;
-      white-space: nowrap;
+      word-break: break-word;
     }
+
     .data-table tbody td:first-child {
       text-align: left;
-      font-weight: 800;
-      color: #333;
+      font-weight: 700;
+      color: var(--text-dark);
+      min-width: 100px;
+      position: sticky;
+      left: 0;
+      background: #fff;
+      z-index: 9;
     }
-    .data-table tbody tr:hover { background: #fafafa; }
-    .data-table tbody tr:last-child {
-      background: #fff8f3;
-      font-weight: 900;
-      border-top: 2px solid #FF8C00;
-      border-bottom: 2px solid #FF8C00;
-    }
-    .data-table tbody tr:last-child td { color: #FF8C00; }
 
-    .export-section {
-      margin: 18px 0 26px 0;
-      padding: 16px;
-      background: linear-gradient(135deg, #fff8f3 0%, #ffe8d6 100%);
-      border-radius: 10px;
-      border-left: 5px solid #FF8C00;
-      box-shadow: 0 2px 8px rgba(255,140,0,0.1);
+    .data-table tbody tr:hover {
+      background: var(--bg-light);
     }
+
+    .data-table tbody tr:hover td:first-child {
+      background: var(--bg-light);
+    }
+
+    .data-table tbody tr:last-child {
+      background: var(--bg-orange-light);
+      font-weight: 900;
+      border-top: 2px solid var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+    }
+
+    .data-table tbody tr:last-child td {
+      color: var(--primary-color);
+      padding: 12px 8px;
+    }
+
+    .data-table tbody tr:last-child td:first-child {
+      background: var(--bg-orange-light);
+    }
+
+    /* ===== EXPORT SECTION ===== */
+    .export-section {
+      margin: 16px 0 20px 0;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--bg-orange-light) 0%, var(--bg-orange-lighter) 100%);
+      border-radius: 10px;
+      border-left: 5px solid var(--primary-color);
+      box-shadow: var(--shadow-sm);
+    }
+
     .export-section h3 {
-      color: #FF8C00;
-      margin-bottom: 10px;
-      font-size: 15px;
+      color: var(--primary-color);
+      margin-bottom: 12px;
+      font-size: clamp(13px, 3vw, 15px);
       font-weight: 900;
     }
+
     .export-controls {
-      display:flex;
-      gap: 12px;
-      align-items:center;
-      flex-wrap:wrap;
-      background:#fff;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      background: #fff;
       padding: 12px;
       border-radius: 8px;
     }
+
     .export-control-group {
-      display:flex;
-      gap: 8px;
-      align-items:center;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-start;
+      flex: 0 1 100%;
+      width: 100%;
     }
+
+    @media (min-width: 480px) {
+      .export-control-group {
+        flex: 0 1 calc(50% - 5px);
+        width: auto;
+      }
+    }
+
+    @media (min-width: 768px) {
+      .export-control-group {
+        flex-direction: row;
+        align-items: center;
+        flex: 0 1 auto;
+        width: auto;
+        gap: 8px;
+      }
+    }
+
     .export-control-group label {
       font-weight: 800;
-      color:#333;
-      font-size: 13px;
-      min-width: 75px;
+      color: var(--text-dark);
+      font-size: clamp(11px, 2.5vw, 13px);
+      white-space: nowrap;
     }
+
     .export-control-group select {
-      padding: 8px 10px;
-      border: 2px solid #FF8C00;
+      padding: 10px 10px;
+      border: 2px solid var(--primary-color);
       border-radius: 6px;
       cursor: pointer;
       background: #fff;
-      font-size: 13px;
-      min-width: 170px;
+      font-size: clamp(11px, 2.5vw, 13px);
       font-weight: 700;
-    }
-    .export-btn {
-      padding: 10px 18px;
-      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-      color:#fff;
-      border:none;
-      border-radius: 6px;
-      cursor:pointer;
-      font-weight: 900;
-      font-size: 13px;
-    }
-    .export-btn:disabled {
-      background:#ccc;
-      cursor:not-allowed;
+      width: 100%;
+      transition: all 0.2s ease;
+      -webkit-appearance: none;
+      appearance: none;
+      padding-right: 30px;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FF8C00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 20px;
+      padding-right: 35px;
     }
 
-    .loading {
-      text-align:center;
-      padding: 24px;
-      color:#666;
-      font-weight: 700;
+    @media (min-width: 768px) {
+      .export-control-group select {
+        width: auto;
+        min-width: 150px;
+      }
     }
+
+    .export-control-group select:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(255,140,0,0.1);
+    }
+
+    .export-btn {
+      padding: 10px 16px;
+      background: linear-gradient(135deg, var(--success-color) 0%, #45a049 100%);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 900;
+      font-size: clamp(11px, 2.5vw, 13px);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      width: 100%;
+      touch-action: manipulation;
+    }
+
+    @media (min-width: 480px) {
+      .export-btn {
+        width: auto;
+      }
+    }
+
+    .export-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(76,175,80,0.3);
+    }
+
+    .export-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .export-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    /* ===== STATUS MESSAGES ===== */
+    .loading {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-light);
+      font-weight: 700;
+      font-size: clamp(13px, 3vw, 15px);
+      animation: pulse 2s infinite;
+    }
+
     .error {
-      text-align:center;
-      padding: 20px;
-      color:#c62828;
+      text-align: center;
+      padding: 20px 16px;
+      color: #c62828;
       font-weight: 800;
+      font-size: clamp(12px, 2.5vw, 14px);
+      background: rgba(198,40,40,0.05);
+      border-radius: 8px;
+      border-left: 4px solid #c62828;
+      word-break: break-word;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* ===== RESPONSIVE TWEAKS ===== */
+    @media (max-width: 480px) {
+      .navbar .container-fluid {
+        padding: 0 8px;
+      }
+
+      .navbar-brand {
+        font-size: 16px;
+      }
+
+      .container {
+        padding: 0 8px;
+        margin: 12px auto;
+      }
+
+      .dashboard-content {
+        padding: 12px;
+        border-radius: 8px;
+      }
+
+      .export-section {
+        margin: 12px 0 16px 0;
+        padding: 12px;
+      }
+
+      .nav-tabs .nav-link {
+        padding: 6px 8px;
+      }
+
+      .data-table {
+        font-size: 10px;
+      }
+
+      .data-table thead th {
+        padding: 8px 6px;
+        font-size: 9px;
+      }
+
+      .data-table tbody td {
+        padding: 6px 4px;
+      }
+
+      .data-table tbody td:first-child {
+        min-width: 90px;
+      }
+
+      .table-title {
+        font-size: 13px;
+      }
+    }
+
+    @media (min-width: 768px) and (max-width: 1024px) {
+      .export-controls {
+        gap: 12px;
+      }
+    }
+
+    @media (min-width: 1025px) {
+      .export-controls {
+        gap: 12px;
+      }
+    }
+
+    /* ===== PRINT STYLE ===== */
+    @media print {
+      .navbar, .export-section, .nav-tabs {
+        display: none;
+      }
+
+      .dashboard-content {
+        box-shadow: none;
+        padding: 0;
+      }
+
+      .data-table {
+        font-size: 10pt;
+      }
+
+      body {
+        background: #fff;
+      }
+    }
+
+    /* ===== ACCESSIBILITY ===== */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ===== DARK MODE SUPPORT ===== */
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      }
+
+      .dashboard-content {
+        background: #2a2a2a;
+        color: #e0e0e0;
+      }
+
+      .data-table {
+        background: #2a2a2a;
+        color: #e0e0e0;
+      }
+
+      .data-table tbody td:first-child {
+        background: #2a2a2a;
+      }
+
+      .data-table tbody tr:hover {
+        background: #333;
+      }
+
+      .data-table tbody tr:hover td:first-child {
+        background: #333;
+      }
+
+      .export-controls {
+        background: #333;
+      }
+
+      .export-control-group select {
+        background-color: #333;
+        color: #e0e0e0;
+        border-color: var(--primary-color);
+      }
+
+      .table-wrapper::after {
+        background: linear-gradient(to left, rgba(42,42,42,0.8), transparent);
+      }
     }
   </style>
 </head>
 <body>
   <nav class="navbar">
     <div class="container-fluid">
-      <div class="navbar-brand">Unnati Motors Warranty Management Dashboard</div>
+      <div class="navbar-brand">Unnati Motors Warranty</div>
       <div class="status" id="statusText">Ready</div>
     </div>
   </nav>
@@ -713,11 +1069,11 @@ DASHBOARD_HTML = """
 
       <div id="warrantyTabs" style="display:none;">
         <div class="nav-tabs">
-          <button class="nav-link active" onclick="switchTab(event,'credit')">Warranty Credit</button>
-          <button class="nav-link" onclick="switchTab(event,'debit')">Warranty Debit</button>
-          <button class="nav-link" onclick="switchTab(event,'arbitration')">Claim Arbitration</button>
-          <button class="nav-link" onclick="switchTab(event,'currentmonth')">Current Month Warranty</button>
-          <button class="nav-link" onclick="switchTab(event,'compensation')">Compensation Claim</button>
+          <button class="nav-link active" onclick="switchTab(event,'credit')">Credit</button>
+          <button class="nav-link" onclick="switchTab(event,'debit')">Debit</button>
+          <button class="nav-link" onclick="switchTab(event,'arbitration')">Arbitration</button>
+          <button class="nav-link" onclick="switchTab(event,'currentmonth')">Current Month</button>
+          <button class="nav-link" onclick="switchTab(event,'compensation')">Compensation</button>
           <button class="nav-link" onclick="switchTab(event,'pr_approval')">PR Approval</button>
         </div>
 
@@ -797,10 +1153,14 @@ DASHBOARD_HTML = """
   let warrantyData = {};
 
   function switchTab(ev, tabName) {
+    ev.preventDefault();
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
     document.getElementById(tabName).classList.add('active');
     ev.target.classList.add('active');
+
+    // Scroll tab into view
+    ev.target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
   }
 
   function renderTable(tableId, data, decimals=0) {
