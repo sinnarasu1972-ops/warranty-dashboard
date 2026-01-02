@@ -1,70 +1,75 @@
-import pandas as pd
-import numpy as np
-from datetime import datetime
-import uvicorn
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
 import os
 import io
 import traceback
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import uvicorn
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, Response, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 
-IS_RENDER = os.getenv('RENDER', 'false').lower() == 'true'
-DATA_DIR = os.getenv('DATA_DIR', '/mnt/data' if IS_RENDER else '.')
+IS_RENDER = os.getenv("RENDER", "false").lower() == "true"
+DATA_DIR = os.getenv("DATA_DIR", "/mnt/data" if IS_RENDER else ".")
 
 print(f"\n{'='*100}")
-print(f"WARRANTY MANAGEMENT SYSTEM - FINAL COMPLETE")
+print("WARRANTY MANAGEMENT SYSTEM - FINAL COMPLETE")
 print(f"{'='*100}\n")
 
 WARRANTY_DATA = {
-    'credit_df': None,
-    'debit_df': None,
-    'arbitration_df': None,       # NOW MONTH-WISE SUMMARY
-    'source_df': None,            # Warranty Debit.xlsx full input
+    "credit_df": None,
+    "debit_df": None,
+    "arbitration_df": None,       # month-wise summary
+    "source_df": None,            # Warranty Debit.xlsx full input
 
-    'current_month_df': None,
-    'current_month_source_df': None,
+    "current_month_df": None,
+    "current_month_source_df": None,
 
-    'compensation_df': None,
-    'compensation_source_df': None,
+    "compensation_df": None,
+    "compensation_source_df": None,
 
-    'pr_approval_df': None,
-    'pr_approval_source_df': None
+    "pr_approval_df": None,
+    "pr_approval_source_df": None,
 }
 
 
-def find_data_file(filename):
+def find_data_file(filename: str):
     possible_paths = [
         filename,
         f"./{filename}",
         os.path.join(DATA_DIR, filename),
-        os.path.join(DATA_DIR, 'data', filename),
-        os.path.join('data', filename)
+        os.path.join(DATA_DIR, "data", filename),
+        os.path.join("data", filename),
     ]
 
-    if filename.endswith('.xlsx'):
-        name = filename.replace('.xlsx', '')
+    if filename.endswith(".xlsx"):
+        name = filename.replace(".xlsx", "")
         copy_variant = f"{name} - Copy.xlsx"
         possible_paths.extend([copy_variant, f"./{copy_variant}", os.path.join(DATA_DIR, copy_variant)])
 
     for path in possible_paths:
         if os.path.exists(path):
-            print(f"  [DONE] Found: {filename}")
+            print(f"  [DONE] Found: {filename} -> {path}")
             return path
-    print(f"  [ERROR] Not found: {filename}")
+
+    print(f"  [ERROR] Not found: {filename} (searched: {possible_paths})")
     return None
 
 
-def style_worksheet(ws, df, header_fill, header_font, border):
+def style_worksheet(ws, df: pd.DataFrame, header_fill, header_font, border):
     # Header
     for col_idx, column in enumerate(df.columns, 1):
-        cell = ws.cell(row=1, column=col_idx, value=column)
+        cell = ws.cell(row=1, column=col_idx, value=str(column))
         cell.fill = header_fill
         cell.font = header_font
         cell.border = border
-        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     # Data
     for row_idx, row in enumerate(df.itertuples(index=False), 2):
@@ -73,17 +78,17 @@ def style_worksheet(ws, df, header_fill, header_font, border):
 
             if isinstance(value, (int, float, np.integer, np.floating)) and not pd.isna(value):
                 cell.value = float(value)
-                cell.number_format = '#,##0'
-                cell.alignment = Alignment(horizontal='right', vertical='center')
+                cell.number_format = "#,##0"
+                cell.alignment = Alignment(horizontal="right", vertical="center")
 
             elif isinstance(value, (datetime, pd.Timestamp)):
                 cell.value = value
-                cell.number_format = 'mm-dd-yyyy'
-                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.number_format = "dd/mm/yyyy"
+                cell.alignment = Alignment(horizontal="center", vertical="center")
 
             else:
-                cell.value = str(value) if not pd.isna(value) else ''
-                cell.alignment = Alignment(horizontal='left', vertical='center')
+                cell.value = "" if pd.isna(value) else str(value)
+                cell.alignment = Alignment(horizontal="left", vertical="center")
 
             cell.border = border
 
@@ -99,77 +104,86 @@ def style_worksheet(ws, df, header_fill, header_font, border):
 # ================== DATA PROCESSING ==================
 
 def process_warranty_data():
-    input_path = find_data_file('Warranty Debit.xlsx')
+    input_path = find_data_file("Warranty Debit.xlsx")
     if input_path is None:
         return None, None, None, None
 
     try:
-        df = pd.read_excel(input_path, sheet_name='Sheet1')
+        df = pd.read_excel(input_path, sheet_name="Sheet1")
         print(f"  [DONE] Warranty data loaded: {len(df)} rows")
 
         dealer_mapping = {
-            'AMRAVATI': 'AMT',
-            'CHAUFULA_SZZ': 'CHA',
-            'CHIKHALI': 'CHI',
-            'KOLHAPUR_WS': 'KOL',
-            'NAGPUR_KAMPTHEE ROAD': 'HO',
-            'NAGPUR_WARDHAMAN NGR': 'CITY',
-            'SHIKRAPUR_SZS': 'SHI',
-            'WAGHOLI': 'WAG',
-            'YAVATMAL': 'YAT',
-            'NAGPUR_WARDHAMAN NGR_CQ': 'CQ'
+            "AMRAVATI": "AMT",
+            "CHAUFULA_SZZ": "CHA",
+            "CHIKHALI": "CHI",
+            "KOLHAPUR_WS": "KOL",
+            "NAGPUR_KAMPTHEE ROAD": "HO",
+            "NAGPUR_WARDHAMAN NGR": "CITY",
+            "SHIKRAPUR_SZS": "SHI",
+            "WAGHOLI": "WAG",
+            "YAVATMAL": "YAT",
+            "NAGPUR_WARDHAMAN NGR_CQ": "CQ",
         }
 
-        numeric_columns = ['Total Claim Amount', 'Credit Note Amount', 'Debit Note Amount']
+        numeric_columns = ["Total Claim Amount", "Credit Note Amount", "Debit Note Amount"]
         for col in numeric_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        df['Dealer_Code'] = df['Dealer Location'].map(dealer_mapping).fillna(df['Dealer Location'])
-        df['Month'] = df['Fiscal Month'].astype(str).str.strip().str[:3]
+        if "Dealer Location" in df.columns:
+            df["Dealer_Code"] = df["Dealer Location"].map(dealer_mapping).fillna(df["Dealer Location"])
+        else:
+            df["Dealer_Code"] = ""
 
-        # Arbitration ID normalize
-        df['Claim arbitration ID'] = df['Claim arbitration ID'].astype(str).replace('nan', '').replace('', np.nan)
+        if "Fiscal Month" in df.columns:
+            df["Month"] = df["Fiscal Month"].astype(str).str.strip().str[:3]
+        else:
+            df["Month"] = ""
 
-        dealers = sorted(df['Dealer_Code'].dropna().astype(str).unique())
-        months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        if "Claim arbitration ID" in df.columns:
+            df["Claim arbitration ID"] = df["Claim arbitration ID"].astype(str).replace("nan", "").replace("", np.nan)
+        else:
+            df["Claim arbitration ID"] = np.nan
+
+        dealers = sorted(df["Dealer_Code"].dropna().astype(str).unique())
+        months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
         # ------------------ CREDIT ------------------
-        credit_df = pd.DataFrame({'Division': dealers})
+        credit_df = pd.DataFrame({"Division": dealers})
         for month in months:
-            month_data = df[df['Month'] == month]
+            month_data = df[df["Month"] == month]
             if not month_data.empty:
-                summary = month_data.groupby('Dealer_Code')['Credit Note Amount'].sum().reset_index()
-                summary.columns = ['Division', f'Credit Note {month}']
-                credit_df = credit_df.merge(summary, on='Division', how='left')
+                summary = month_data.groupby("Dealer_Code")["Credit Note Amount"].sum().reset_index()
+                summary.columns = ["Division", f"Credit Note {month}"]
+                credit_df = credit_df.merge(summary, on="Division", how="left")
             else:
-                credit_df[f'Credit Note {month}'] = 0
+                credit_df[f"Credit Note {month}"] = 0
 
         credit_df = credit_df.fillna(0)
-        credit_columns = [f'Credit Note {m}' for m in months]
-        credit_df['Total Credit'] = credit_df[credit_columns].sum(axis=1)
+        credit_columns = [f"Credit Note {m}" for m in months]
+        credit_df["Total Credit"] = credit_df[credit_columns].sum(axis=1)
 
-        grand_total_credit = {'Division': 'Grand Total'}
+        grand_total_credit = {"Division": "Grand Total"}
         for col in credit_df.columns[1:]:
             grand_total_credit[col] = credit_df[col].sum()
         credit_df = pd.concat([credit_df, pd.DataFrame([grand_total_credit])], ignore_index=True)
 
         # ------------------ DEBIT ------------------
-        debit_df = pd.DataFrame({'Division': dealers})
+        debit_df = pd.DataFrame({"Division": dealers})
         for month in months:
-            month_data = df[df['Month'] == month]
+            month_data = df[df["Month"] == month]
             if not month_data.empty:
-                summary = month_data.groupby('Dealer_Code')['Debit Note Amount'].sum().reset_index()
-                summary.columns = ['Division', f'Debit Note {month}']
-                debit_df = debit_df.merge(summary, on='Division', how='left')
+                summary = month_data.groupby("Dealer_Code")["Debit Note Amount"].sum().reset_index()
+                summary.columns = ["Division", f"Debit Note {month}"]
+                debit_df = debit_df.merge(summary, on="Division", how="left")
             else:
-                debit_df[f'Debit Note {month}'] = 0
+                debit_df[f"Debit Note {month}"] = 0
 
         debit_df = debit_df.fillna(0)
-        debit_columns = [f'Debit Note {m}' for m in months]
-        debit_df['Total Debit'] = debit_df[debit_columns].sum(axis=1)
+        debit_columns = [f"Debit Note {m}" for m in months]
+        debit_df["Total Debit"] = debit_df[debit_columns].sum(axis=1)
 
-        grand_total_debit = {'Division': 'Grand Total'}
+        grand_total_debit = {"Division": "Grand Total"}
         for col in debit_df.columns[1:]:
             grand_total_debit[col] = debit_df[col].sum()
         debit_df = pd.concat([debit_df, pd.DataFrame([grand_total_debit])], ignore_index=True)
@@ -179,42 +193,39 @@ def process_warranty_data():
             if pd.isna(value):
                 return False
             v = str(value).strip().upper()
-            return v.startswith('ARB') and v != 'NAN' and v != ''
+            return v.startswith("ARB") and v not in ("NAN", "")
 
-        # We build month-wise claimed and not claimed
-        arbitration_df = pd.DataFrame({'Division': dealers})
+        arbitration_df = pd.DataFrame({"Division": dealers})
 
-        # Claimed by month
         for month in months:
-            month_data = df[df['Month'] == month]
+            month_data = df[df["Month"] == month]
             if month_data.empty:
-                arbitration_df[f'Arbitration Claimed {month}'] = 0
-                arbitration_df[f'Arbitration Not Claimed {month}'] = 0
+                arbitration_df[f"Arbitration Claimed {month}"] = 0
+                arbitration_df[f"Arbitration Not Claimed {month}"] = 0
                 continue
 
-            claimed = month_data[month_data['Claim arbitration ID'].apply(is_arbitration)]
-            not_claimed = month_data[~month_data['Claim arbitration ID'].apply(is_arbitration)]
+            claimed = month_data[month_data["Claim arbitration ID"].apply(is_arbitration)]
+            not_claimed = month_data[~month_data["Claim arbitration ID"].apply(is_arbitration)]
 
-            claimed_sum = claimed.groupby('Dealer_Code')['Debit Note Amount'].sum().reset_index()
-            claimed_sum.columns = ['Division', f'Arbitration Claimed {month}']
+            claimed_sum = claimed.groupby("Dealer_Code")["Debit Note Amount"].sum().reset_index()
+            claimed_sum.columns = ["Division", f"Arbitration Claimed {month}"]
 
-            not_claimed_sum = not_claimed.groupby('Dealer_Code')['Debit Note Amount'].sum().reset_index()
-            not_claimed_sum.columns = ['Division', f'Arbitration Not Claimed {month}']
+            not_claimed_sum = not_claimed.groupby("Dealer_Code")["Debit Note Amount"].sum().reset_index()
+            not_claimed_sum.columns = ["Division", f"Arbitration Not Claimed {month}"]
 
-            arbitration_df = arbitration_df.merge(claimed_sum, on='Division', how='left')
-            arbitration_df = arbitration_df.merge(not_claimed_sum, on='Division', how='left')
+            arbitration_df = arbitration_df.merge(claimed_sum, on="Division", how="left")
+            arbitration_df = arbitration_df.merge(not_claimed_sum, on="Division", how="left")
 
         arbitration_df = arbitration_df.fillna(0)
 
-        claimed_cols = [f'Arbitration Claimed {m}' for m in months]
-        not_claimed_cols = [f'Arbitration Not Claimed {m}' for m in months]
+        claimed_cols = [f"Arbitration Claimed {m}" for m in months]
+        not_claimed_cols = [f"Arbitration Not Claimed {m}" for m in months]
 
-        arbitration_df['Arbitration Claimed Total'] = arbitration_df[claimed_cols].sum(axis=1)
-        arbitration_df['Arbitration Not Claimed Total'] = arbitration_df[not_claimed_cols].sum(axis=1)
-        arbitration_df['Total Debit'] = arbitration_df['Arbitration Claimed Total'] + arbitration_df['Arbitration Not Claimed Total']
+        arbitration_df["Arbitration Claimed Total"] = arbitration_df[claimed_cols].sum(axis=1)
+        arbitration_df["Arbitration Not Claimed Total"] = arbitration_df[not_claimed_cols].sum(axis=1)
+        arbitration_df["Total Debit"] = arbitration_df["Arbitration Claimed Total"] + arbitration_df["Arbitration Not Claimed Total"]
 
-        # Grand total row
-        grand_total_arb = {'Division': 'Grand Total'}
+        grand_total_arb = {"Division": "Grand Total"}
         for col in arbitration_df.columns[1:]:
             grand_total_arb[col] = arbitration_df[col].sum()
         arbitration_df = pd.concat([arbitration_df, pd.DataFrame([grand_total_arb])], ignore_index=True)
@@ -223,189 +234,181 @@ def process_warranty_data():
         return credit_df, debit_df, arbitration_df, df
 
     except Exception as e:
-        print(f"   Error: {e}")
+        print(f"  [ERROR] Warranty processing failed: {e}")
         traceback.print_exc()
         return None, None, None, None
 
 
 def process_current_month_warranty():
-    input_path = find_data_file('Pending Warranty Claim Details.xlsx')
+    input_path = find_data_file("Pending Warranty Claim Details.xlsx")
     if input_path is None:
         return None, None
 
     try:
-        df = pd.read_excel(input_path, sheet_name='Pending Warranty Claim Details')
-        print(f"   Current Month loaded: {len(df)} rows")
+        df = pd.read_excel(input_path, sheet_name="Pending Warranty Claim Details")
+        print(f"  [DONE] Current Month loaded: {len(df)} rows")
 
-        df['Division'] = df['Division'].astype(str).str.strip()
-        df = df[df['Division'].notna() & (df['Division'] != '') & (df['Division'] != 'nan')]
+        if "Division" not in df.columns:
+            return None, None
+
+        df["Division"] = df["Division"].astype(str).str.strip()
+        df = df[df["Division"].notna() & (df["Division"] != "") & (df["Division"] != "nan")]
 
         summary_data = []
-        for division in sorted(df['Division'].unique()):
-            div_data = df[df['Division'] == division]
+        for division in sorted(df["Division"].unique()):
+            div_data = df[df["Division"] == division]
+            sp = int(div_data["Pending Claims Spares"].notna().sum()) if "Pending Claims Spares" in df.columns else 0
+            lb = int(div_data["Pending Claims Labour"].notna().sum()) if "Pending Claims Labour" in df.columns else 0
             summary_data.append({
-                'Division': division,
-                'Pending Spares Count': int(div_data['Pending Claims Spares'].notna().sum()),
-                'Pending Labour Count': int(div_data['Pending Claims Labour'].notna().sum()),
-                'Total Pending Claims': int(div_data['Pending Claims Spares'].notna().sum() + div_data['Pending Claims Labour'].notna().sum())
+                "Division": division,
+                "Pending Spares Count": sp,
+                "Pending Labour Count": lb,
+                "Total Pending Claims": sp + lb,
             })
 
         summary_df = pd.DataFrame(summary_data)
         grand_total = {
-            'Division': 'Grand Total',
-            'Pending Spares Count': int(summary_df['Pending Spares Count'].sum()),
-            'Pending Labour Count': int(summary_df['Pending Labour Count'].sum()),
-            'Total Pending Claims': int(summary_df['Total Pending Claims'].sum())
+            "Division": "Grand Total",
+            "Pending Spares Count": int(summary_df["Pending Spares Count"].sum()) if not summary_df.empty else 0,
+            "Pending Labour Count": int(summary_df["Pending Labour Count"].sum()) if not summary_df.empty else 0,
+            "Total Pending Claims": int(summary_df["Total Pending Claims"].sum()) if not summary_df.empty else 0,
         }
         summary_df = pd.concat([summary_df, pd.DataFrame([grand_total])], ignore_index=True)
 
-        print("   Current Month processing completed")
+        print("  [DONE] Current Month processing completed")
         return summary_df, df
 
     except Exception as e:
-        print(f"   Error: {e}")
+        print(f"  [ERROR] Current Month processing failed: {e}")
         traceback.print_exc()
         return None, None
 
 
 def process_compensation_claim():
-    input_path = find_data_file('Transit_Claims_Merged.xlsx')
+    input_path = find_data_file("Transit_Claims_Merged.xlsx")
     if input_path is None:
         return None, None
 
     try:
         df = pd.read_excel(input_path)
-        print(f"   Compensation loaded: {len(df)} rows")
+        print(f"  [DONE] Compensation loaded: {len(df)} rows")
 
         required_columns = [
-            'Division', 'RO Id.', 'Registration No.', 'RO Date', 'RO Bill Date',
-            'Chassis No.', 'Model Group', 'Claim Amount', 'Claim Date',
-            'Request No.', 'Request Date', 'Request Status',
-            'Claim Approved Amt.', 'No. of Days'
+            "Division", "RO Id.", "Registration No.", "RO Date", "RO Bill Date",
+            "Chassis No.", "Model Group", "Claim Amount", "Claim Date",
+            "Request No.", "Request Date", "Request Status",
+            "Claim Approved Amt.", "No. of Days",
         ]
-
-        available_columns = [col for col in required_columns if col in df.columns]
+        available_columns = [c for c in required_columns if c in df.columns]
         if not available_columns:
             return None, None
 
         df_filtered = df[available_columns].copy()
 
-        if 'Division' in df_filtered.columns:
-            df_filtered['Division'] = df_filtered['Division'].astype(str).str.strip()
-            df_filtered = df_filtered[df_filtered['Division'].notna() &
-                                      (df_filtered['Division'] != '') &
-                                      (df_filtered['Division'] != 'nan')]
+        if "Division" in df_filtered.columns:
+            df_filtered["Division"] = df_filtered["Division"].astype(str).str.strip()
+            df_filtered = df_filtered[df_filtered["Division"].notna() & (df_filtered["Division"] != "") & (df_filtered["Division"] != "nan")]
 
-        if 'RO Id.' in df_filtered.columns:
+        if "RO Id." in df_filtered.columns:
             def format_ro_id(x):
-                if pd.isna(x) or str(x).strip() == '':
-                    return ''
+                if pd.isna(x) or str(x).strip() == "":
+                    return ""
                 try:
                     return f"RO{str(int(float(x)))}"
-                except:
+                except Exception:
                     return str(x).strip()
-            df_filtered['RO Id.'] = df_filtered['RO Id.'].apply(format_ro_id)
+            df_filtered["RO Id."] = df_filtered["RO Id."].apply(format_ro_id)
 
-        numeric_cols = ['Claim Amount', 'Claim Approved Amt.', 'No. of Days']
+        numeric_cols = ["Claim Amount", "Claim Approved Amt.", "No. of Days"]
         for col in numeric_cols:
             if col in df_filtered.columns:
-                df_filtered[col] = pd.to_numeric(df_filtered[col], errors='coerce').fillna(0)
+                df_filtered[col] = pd.to_numeric(df_filtered[col], errors="coerce").fillna(0)
 
-        date_cols = ['RO Date', 'RO Bill Date', 'Claim Date', 'Request Date']
+        date_cols = ["RO Date", "RO Bill Date", "Claim Date", "Request Date"]
         for col in date_cols:
             if col in df_filtered.columns:
-                df_filtered[col] = pd.to_datetime(df_filtered[col], errors='coerce')
+                df_filtered[col] = pd.to_datetime(df_filtered[col], errors="coerce")
 
         summary_data = []
-        if 'Division' in df_filtered.columns:
-            for division in sorted(df_filtered['Division'].unique()):
-                div_data = df_filtered[df_filtered['Division'] == division]
-                summary_row = {'Division': division, 'Total Claims': len(div_data)}
-
-                if 'Claim Amount' in df_filtered.columns:
-                    summary_row['Total Claim Amount'] = div_data['Claim Amount'].sum()
-
-                if 'Claim Approved Amt.' in df_filtered.columns:
-                    summary_row['Total Approved Amount'] = div_data['Claim Approved Amt.'].sum()
-
-                if 'No. of Days' in df_filtered.columns:
-                    summary_row['Avg No. of Days'] = div_data['No. of Days'].mean()
-
-                summary_data.append(summary_row)
+        if "Division" in df_filtered.columns:
+            for division in sorted(df_filtered["Division"].unique()):
+                div_data = df_filtered[df_filtered["Division"] == division]
+                row = {"Division": division, "Total Claims": len(div_data)}
+                if "Claim Amount" in df_filtered.columns:
+                    row["Total Claim Amount"] = div_data["Claim Amount"].sum()
+                if "Claim Approved Amt." in df_filtered.columns:
+                    row["Total Approved Amount"] = div_data["Claim Approved Amt."].sum()
+                if "No. of Days" in df_filtered.columns:
+                    row["Avg No. of Days"] = div_data["No. of Days"].mean()
+                summary_data.append(row)
 
             summary_df = pd.DataFrame(summary_data)
-            grand_total = {'Division': 'Grand Total'}
+            grand_total = {"Division": "Grand Total"}
             for col in summary_df.columns[1:]:
-                if summary_df[col].dtype in ['int64', 'float64']:
+                if np.issubdtype(summary_df[col].dtype, np.number):
                     grand_total[col] = summary_df[col].sum()
             summary_df = pd.concat([summary_df, pd.DataFrame([grand_total])], ignore_index=True)
         else:
             summary_df = pd.DataFrame()
 
-        print("   Compensation processing completed")
+        print("  [DONE] Compensation processing completed")
         return summary_df, df_filtered
 
     except Exception as e:
-        print(f"   Error: {e}")
+        print(f"  [ERROR] Compensation processing failed: {e}")
         traceback.print_exc()
         return None, None
 
 
 def process_pr_approval():
-    input_path = find_data_file('Pr_Approval_Claims_Merged.xlsx')
+    input_path = find_data_file("Pr_Approval_Claims_Merged.xlsx")
     if input_path is None:
         return None, None
 
     try:
         df = pd.read_excel(input_path)
-        print(f"   PR Approval loaded: {len(df)} rows")
+        print(f"  [DONE] PR Approval loaded: {len(df)} rows")
 
-        if 'Division' not in df.columns:
+        if "Division" not in df.columns:
             return None, None
 
-        df['Division'] = df['Division'].astype(str).str.strip()
-        df = df[df['Division'].notna() & (df['Division'] != '') & (df['Division'] != 'nan')]
+        df["Division"] = df["Division"].astype(str).str.strip()
+        df = df[df["Division"].notna() & (df["Division"] != "") & (df["Division"] != "nan")]
 
-        numeric_cols = ['Total Cost of Repair', 'Req. Claim Amt from M&M', 'App. Claim Amt from M&M']
+        numeric_cols = ["Total Cost of Repair", "Req. Claim Amt from M&M", "App. Claim Amt from M&M"]
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         summary_data = []
-        for division in sorted(df['Division'].unique()):
-            div_data = df[df['Division'] == division]
-            summary_row = {'Division': division, 'Total Requests': len(div_data)}
-
-            if 'Total Cost of Repair' in df.columns:
-                summary_row['Total Cost of Repair'] = div_data['Total Cost of Repair'].sum()
-
-            if 'Req. Claim Amt from M&M' in df.columns:
-                summary_row['Req. Claim Amt from M&M'] = div_data['Req. Claim Amt from M&M'].sum()
-
-            if 'App. Claim Amt from M&M' in df.columns:
-                summary_row['Total Approved Amount'] = div_data['App. Claim Amt from M&M'].sum()
-
-            summary_data.append(summary_row)
+        for division in sorted(df["Division"].unique()):
+            div_data = df[df["Division"] == division]
+            row = {"Division": division, "Total Requests": len(div_data)}
+            if "Total Cost of Repair" in df.columns:
+                row["Total Cost of Repair"] = div_data["Total Cost of Repair"].sum()
+            if "Req. Claim Amt from M&M" in df.columns:
+                row["Req. Claim Amt from M&M"] = div_data["Req. Claim Amt from M&M"].sum()
+            if "App. Claim Amt from M&M" in df.columns:
+                row["Total Approved Amount"] = div_data["App. Claim Amt from M&M"].sum()
+            summary_data.append(row)
 
         summary_df = pd.DataFrame(summary_data)
-        grand_total = {'Division': 'Grand Total'}
+        grand_total = {"Division": "Grand Total"}
         for col in summary_df.columns[1:]:
-            if summary_df[col].dtype in ['int64', 'float64']:
+            if np.issubdtype(summary_df[col].dtype, np.number):
                 grand_total[col] = summary_df[col].sum()
         summary_df = pd.concat([summary_df, pd.DataFrame([grand_total])], ignore_index=True)
 
-        print("   PR Approval processing completed")
+        print("  [DONE] PR Approval processing completed")
         return summary_df, df
 
     except Exception as e:
-        print(f"   Error: {e}")
+        print(f"  [ERROR] PR Approval processing failed: {e}")
         traceback.print_exc()
         return None, None
 
 
 # ==================== HTML DASHBOARD ====================
-# NOTE: Only changes required in JS are NONE. It will render any columns automatically.
-#       Arbitration table now has month-wise columns because arbitration_df is month-wise.
 
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -530,10 +533,14 @@ let warrantyData = {};
 async function loadDashboard() {
     const spinner = document.getElementById('loadingSpinner');
     const tabs = document.getElementById('warrantyTabs');
+    spinner.style.display = 'block';
 
     try {
         const response = await fetch('/api/warranty-data');
-        if (!response.ok) throw new Error('Failed');
+        if (!response.ok) {
+            const txt = await response.text();
+            throw new Error(txt || 'Failed');
+        }
 
         warrantyData = await response.json();
 
@@ -549,7 +556,7 @@ async function loadDashboard() {
         spinner.style.display = 'none';
         tabs.style.display = 'block';
     } catch (error) {
-        spinner.innerHTML = '<p style="color: red;">Error loading data</p>';
+        spinner.innerHTML = '<p style="color: red;">Error loading data: ' + (error.message || '') + '</p>';
     }
 }
 
@@ -558,7 +565,7 @@ function populateTable(data, tableId) {
     const table = document.getElementById(tableId);
     const headers = Object.keys(data[0]);
 
-    table.querySelector('thead').innerHTML = headers.map(h => `<th>${h}</th>`).join('');
+    table.querySelector('thead').innerHTML = '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr>';
     table.querySelector('tbody').innerHTML = data.map((row) =>
         `<tr>${headers.map((h) => {
             const val = row[h];
@@ -614,6 +621,9 @@ async function exportToExcel() {
     const errorDiv = document.getElementById('exportError');
 
     errorDiv.classList.remove('show');
+    errorDiv.style.background = '';
+    errorDiv.style.borderLeft = '';
+    errorDiv.style.color = '';
 
     if (!division) {
         errorDiv.textContent = 'Select division first';
@@ -628,10 +638,13 @@ async function exportToExcel() {
             body: JSON.stringify({division, type})
         });
 
-        if (!response.ok) throw new Error('Export failed');
+        if (!response.ok) {
+            const txt = await response.text();
+            throw new Error(txt || 'Export failed');
+        }
 
         const blob = await response.blob();
-        if (blob.size === 0) throw new Error('Empty file');
+        if (!blob || blob.size === 0) throw new Error('Empty file received');
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -648,7 +661,7 @@ async function exportToExcel() {
         errorDiv.style.color = '#2e7d32';
         errorDiv.classList.add('show');
     } catch (error) {
-        errorDiv.textContent = 'Export failed: ' + error.message;
+        errorDiv.textContent = 'Export failed: ' + (error.message || '');
         errorDiv.classList.add('show');
     }
 }
@@ -663,23 +676,53 @@ window.onload = loadDashboard;
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+async def startup_load():
+    print("Processing warranty data...\n")
+
+    print("1. Processing Warranty Debit...")
+    (WARRANTY_DATA["credit_df"],
+     WARRANTY_DATA["debit_df"],
+     WARRANTY_DATA["arbitration_df"],
+     WARRANTY_DATA["source_df"]) = process_warranty_data()
+
+    print("2. Processing Current Month...")
+    (WARRANTY_DATA["current_month_df"],
+     WARRANTY_DATA["current_month_source_df"]) = process_current_month_warranty()
+
+    print("3. Processing Compensation...")
+    (WARRANTY_DATA["compensation_df"],
+     WARRANTY_DATA["compensation_source_df"]) = process_compensation_claim()
+
+    print("4. Processing PR Approval...")
+    (WARRANTY_DATA["pr_approval_df"],
+     WARRANTY_DATA["pr_approval_source_df"]) = process_pr_approval()
+
+    print("Startup data load complete.\n")
+
 
 @app.get("/api/warranty-data")
 async def get_warranty_data():
     try:
-        if WARRANTY_DATA['credit_df'] is None:
+        if WARRANTY_DATA["credit_df"] is None:
             return {"credit": [], "debit": [], "arbitration": [], "currentMonth": [], "compensation": [], "prApproval": []}
 
-        credit_records = WARRANTY_DATA['credit_df'].to_dict('records')
-        debit_records = WARRANTY_DATA['debit_df'].to_dict('records')
-        arbitration_records = WARRANTY_DATA['arbitration_df'].to_dict('records')
+        credit_records = WARRANTY_DATA["credit_df"].to_dict("records")
+        debit_records = WARRANTY_DATA["debit_df"].to_dict("records")
+        arbitration_records = WARRANTY_DATA["arbitration_df"].to_dict("records")
 
-        current_month_records = (WARRANTY_DATA['current_month_df'].to_dict('records')
-                                 if WARRANTY_DATA['current_month_df'] is not None else [])
-        compensation_records = (WARRANTY_DATA['compensation_df'].to_dict('records')
-                                if WARRANTY_DATA['compensation_df'] is not None else [])
-        pr_approval_records = (WARRANTY_DATA['pr_approval_df'].to_dict('records')
-                               if WARRANTY_DATA['pr_approval_df'] is not None else [])
+        current_month_records = WARRANTY_DATA["current_month_df"].to_dict("records") if WARRANTY_DATA["current_month_df"] is not None else []
+        compensation_records = WARRANTY_DATA["compensation_df"].to_dict("records") if WARRANTY_DATA["compensation_df"] is not None else []
+        pr_approval_records = WARRANTY_DATA["pr_approval_df"].to_dict("records") if WARRANTY_DATA["pr_approval_df"] is not None else []
 
         # Replace NaN with 0 for JSON
         for records in [credit_records, debit_records, arbitration_records, current_month_records, compensation_records, pr_approval_records]:
@@ -694,147 +737,144 @@ async def get_warranty_data():
             "arbitration": arbitration_records,
             "currentMonth": current_month_records,
             "compensation": compensation_records,
-            "prApproval": pr_approval_records
+            "prApproval": pr_approval_records,
         }
-    except Exception:
-        raise HTTPException(status_code=500, detail="Error loading data")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading data: {e}")
 
 
 @app.post("/api/export-to-excel")
 async def export_to_excel(request: Request):
     try:
         body = await request.json()
-        selected_division = body.get('division', 'All')
-        export_type = body.get('type', 'credit')
+        selected_division = body.get("division", "All")
+        export_type = body.get("type", "credit")
 
         print(f"\nEXPORT: {selected_division} - {export_type}")
 
         header_fill = PatternFill(start_color="FF8C00", end_color="FF8C00", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF", size=12)
         border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin"),
         )
 
         wb = Workbook()
-        wb.remove(wb.active)
+        ws0 = wb.active
+        ws0.title = "Summary"  # ensure at least one sheet always exists
+
+        def write_summary(df_export: pd.DataFrame):
+            # reuse first sheet
+            ws0.delete_rows(1, ws0.max_row)
+            ws0.delete_cols(1, ws0.max_column)
+            style_worksheet(ws0, df_export, header_fill, header_font, border)
 
         # ============ CREDIT ============
-        if export_type == 'credit':
-            df = WARRANTY_DATA['credit_df']
+        if export_type == "credit":
+            df = WARRANTY_DATA["credit_df"]
             if df is None or df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No Credit data")
 
-            if selected_division != 'All':
-                df_export = df[df['Division'] == selected_division].copy()
-                gt = df[df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                df_export = df[df["Division"] == selected_division].copy()
+                gt = df[df["Division"] == "Grand Total"]
                 if not gt.empty:
                     df_export = pd.concat([df_export, gt], ignore_index=True)
             else:
                 df_export = df.copy()
 
-            ws = wb.create_sheet("Summary")
-            style_worksheet(ws, df_export, header_fill, header_font, border)
+            write_summary(df_export)
 
         # ============ DEBIT ============
-        elif export_type == 'debit':
-            df = WARRANTY_DATA['debit_df']
+        elif export_type == "debit":
+            df = WARRANTY_DATA["debit_df"]
             if df is None or df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No Debit data")
 
-            if selected_division != 'All':
-                df_export = df[df['Division'] == selected_division].copy()
-                gt = df[df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                df_export = df[df["Division"] == selected_division].copy()
+                gt = df[df["Division"] == "Grand Total"]
                 if not gt.empty:
                     df_export = pd.concat([df_export, gt], ignore_index=True)
             else:
                 df_export = df.copy()
 
-            ws = wb.create_sheet("Summary")
-            style_worksheet(ws, df_export, header_fill, header_font, border)
+            write_summary(df_export)
 
-        # ============ ARBITRATION (MONTH-WISE SUMMARY + UPDATED + NOT UPDATED) ============
-        elif export_type == 'arbitration':
-            summary_df = WARRANTY_DATA['arbitration_df']   # month-wise
-            source_df = WARRANTY_DATA['source_df']         # full input
+        # ============ ARBITRATION ============
+        elif export_type == "arbitration":
+            summary_df = WARRANTY_DATA["arbitration_df"]
+            source_df = WARRANTY_DATA["source_df"]
 
             if summary_df is None or summary_df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No Arbitration data")
 
-            # Sheet 1: Month-wise Summary
-            if selected_division != 'All':
-                summ_export = summary_df[summary_df['Division'] == selected_division].copy()
-                gt = summary_df[summary_df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                summ_export = summary_df[summary_df["Division"] == selected_division].copy()
+                gt = summary_df[summary_df["Division"] == "Grand Total"]
                 if not gt.empty:
                     summ_export = pd.concat([summ_export, gt], ignore_index=True)
             else:
                 summ_export = summary_df.copy()
 
-            ws1 = wb.create_sheet("Summary")
-            style_worksheet(ws1, summ_export, header_fill, header_font, border)
+            write_summary(summ_export)
 
-            # Sheet 2 & 3: Complete Details (Updated / Not Updated)
+            # Details sheets
             if source_df is not None and not source_df.empty:
                 def is_arbitration(value):
                     if pd.isna(value):
                         return False
                     v = str(value).strip().upper()
-                    return v.startswith('ARB') and v != 'NAN' and v != ''
+                    return v.startswith("ARB") and v not in ("NAN", "")
 
-                # Use Dealer_Code already present in source_df? (source_df is raw df)
-                # We'll rebuild Dealer_Code + Month same as processing for safe filtering:
                 dealer_mapping = {
-                    'AMRAVATI': 'AMT',
-                    'CHAUFULA_SZZ': 'CHA',
-                    'CHIKHALI': 'CHI',
-                    'KOLHAPUR_WS': 'KOL',
-                    'NAGPUR_KAMPTHEE ROAD': 'HO',
-                    'NAGPUR_WARDHAMAN NGR': 'CITY',
-                    'SHIKRAPUR_SZS': 'SHI',
-                    'WAGHOLI': 'WAG',
-                    'YAVATMAL': 'YAT',
-                    'NAGPUR_WARDHAMAN NGR_CQ': 'CQ'
+                    "AMRAVATI": "AMT",
+                    "CHAUFULA_SZZ": "CHA",
+                    "CHIKHALI": "CHI",
+                    "KOLHAPUR_WS": "KOL",
+                    "NAGPUR_KAMPTHEE ROAD": "HO",
+                    "NAGPUR_WARDHAMAN NGR": "CITY",
+                    "SHIKRAPUR_SZS": "SHI",
+                    "WAGHOLI": "WAG",
+                    "YAVATMAL": "YAT",
+                    "NAGPUR_WARDHAMAN NGR_CQ": "CQ",
                 }
 
                 src = source_df.copy()
 
-                if 'Debit Note Amount' in src.columns:
-                    src['Debit Note Amount'] = pd.to_numeric(src['Debit Note Amount'], errors='coerce').fillna(0)
+                if "Debit Note Amount" in src.columns:
+                    src["Debit Note Amount"] = pd.to_numeric(src["Debit Note Amount"], errors="coerce").fillna(0)
 
-                if 'Dealer Location' in src.columns:
-                    src['Dealer_Code'] = src['Dealer Location'].map(dealer_mapping).fillna(src['Dealer Location'])
+                if "Dealer Location" in src.columns:
+                    src["Dealer_Code"] = src["Dealer Location"].map(dealer_mapping).fillna(src["Dealer Location"])
                 else:
-                    src['Dealer_Code'] = ''
+                    src["Dealer_Code"] = ""
 
-                if 'Fiscal Month' in src.columns:
-                    src['Month'] = src['Fiscal Month'].astype(str).str.strip().str[:3]
+                if "Fiscal Month" in src.columns:
+                    src["Month"] = src["Fiscal Month"].astype(str).str.strip().str[:3]
                 else:
-                    src['Month'] = ''
+                    src["Month"] = ""
 
-                if 'Claim arbitration ID' in src.columns:
-                    src['Claim arbitration ID'] = src['Claim arbitration ID'].astype(str).replace('nan', '').replace('', np.nan)
+                if "Claim arbitration ID" in src.columns:
+                    src["Claim arbitration ID"] = src["Claim arbitration ID"].astype(str).replace("nan", "").replace("", np.nan)
                 else:
-                    src['Claim arbitration ID'] = np.nan
+                    src["Claim arbitration ID"] = np.nan
 
-                # Filter by division
-                if selected_division != 'All':
-                    src = src[src['Dealer_Code'].astype(str).str.strip() == str(selected_division).strip()].copy()
+                if selected_division != "All":
+                    src = src[src["Dealer_Code"].astype(str).str.strip() == str(selected_division).strip()].copy()
 
-                updated_df = src[src['Claim arbitration ID'].apply(is_arbitration)].copy()
-                not_updated_df = src[~src['Claim arbitration ID'].apply(is_arbitration)].copy()
+                updated_df = src[src["Claim arbitration ID"].apply(is_arbitration)].copy()
+                not_updated_df = src[~src["Claim arbitration ID"].apply(is_arbitration)].copy()
 
-                # Sort for better reading (if dates exist)
-                sort_cols = []
-                for c in ['Fiscal Month', 'Month', 'Dealer Location', 'Dealer_Code']:
-                    if c in updated_df.columns:
-                        sort_cols.append(c)
+                sort_cols = [c for c in ["Fiscal Month", "Month", "Dealer Location", "Dealer_Code"] if c in src.columns]
                 if sort_cols:
-                    updated_df = updated_df.sort_values(sort_cols, ascending=True, na_position='last')
-                    not_updated_df = not_updated_df.sort_values(sort_cols, ascending=True, na_position='last')
+                    if not updated_df.empty:
+                        updated_df = updated_df.sort_values(sort_cols, ascending=True, na_position="last")
+                    if not not_updated_df.empty:
+                        not_updated_df = not_updated_df.sort_values(sort_cols, ascending=True, na_position="last")
 
-                # Keep COMPLETE columns as per input file
                 if not updated_df.empty:
                     ws2 = wb.create_sheet("Arbitration Updated")
                     style_worksheet(ws2, updated_df, header_fill, header_font, border)
@@ -843,36 +883,31 @@ async def export_to_excel(request: Request):
                     ws3 = wb.create_sheet("Arbitration Not Updated")
                     style_worksheet(ws3, not_updated_df, header_fill, header_font, border)
 
-        # ============ CURRENT MONTH (3 SHEETS) ============
-        elif export_type == 'currentmonth':
-            df = WARRANTY_DATA['current_month_df']
-            source_df = WARRANTY_DATA['current_month_source_df']
+        # ============ CURRENT MONTH ============
+        elif export_type == "currentmonth":
+            df = WARRANTY_DATA["current_month_df"]
+            source_df = WARRANTY_DATA["current_month_source_df"]
 
             if df is None or df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No Current Month data")
 
-            # Sheet 1: Summary
-            if selected_division != 'All':
-                df_export = df[df['Division'] == selected_division].copy()
-                gt = df[df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                df_export = df[df["Division"] == selected_division].copy()
+                gt = df[df["Division"] == "Grand Total"]
                 if not gt.empty:
                     df_export = pd.concat([df_export, gt], ignore_index=True)
             else:
                 df_export = df.copy()
 
-            ws1 = wb.create_sheet("Summary")
-            style_worksheet(ws1, df_export, header_fill, header_font, border)
+            write_summary(df_export)
 
-            # Sheet 2 & 3: Details
-            if source_df is not None:
-                if selected_division != 'All':
-                    spares_df = source_df[(source_df['Division'] == selected_division) &
-                                          (source_df['Pending Claims Spares'].notna())].copy()
-                    labour_df = source_df[(source_df['Division'] == selected_division) &
-                                          (source_df['Pending Claims Labour'].notna())].copy()
+            if source_df is not None and not source_df.empty:
+                if selected_division != "All":
+                    spares_df = source_df[(source_df["Division"] == selected_division) & (source_df.get("Pending Claims Spares").notna())].copy()
+                    labour_df = source_df[(source_df["Division"] == selected_division) & (source_df.get("Pending Claims Labour").notna())].copy()
                 else:
-                    spares_df = source_df[source_df['Pending Claims Spares'].notna()].copy()
-                    labour_df = source_df[source_df['Pending Claims Labour'].notna()].copy()
+                    spares_df = source_df[source_df.get("Pending Claims Spares").notna()].copy()
+                    labour_df = source_df[source_df.get("Pending Claims Labour").notna()].copy()
 
                 if not spares_df.empty:
                     ws2 = wb.create_sheet("Spares Claimed Details")
@@ -882,97 +917,83 @@ async def export_to_excel(request: Request):
                     ws3 = wb.create_sheet("Labour Claimed Details")
                     style_worksheet(ws3, labour_df, header_fill, header_font, border)
 
-        # ============ COMPENSATION (TAT FROM RO BILL DATE) ============
-        elif export_type == 'compensation':
-            summary_df = WARRANTY_DATA['compensation_df']
-            source_df = WARRANTY_DATA['compensation_source_df']
+        # ============ COMPENSATION ============
+        elif export_type == "compensation":
+            summary_df = WARRANTY_DATA["compensation_df"]
+            source_df = WARRANTY_DATA["compensation_source_df"]
 
             if summary_df is None or summary_df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No Compensation data")
 
-            # Sheet 1: Summary
-            if selected_division != 'All':
-                summary_export = summary_df[summary_df['Division'] == selected_division].copy()
-                gt = summary_df[summary_df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                summary_export = summary_df[summary_df["Division"] == selected_division].copy()
+                gt = summary_df[summary_df["Division"] == "Grand Total"]
                 if not gt.empty:
                     summary_export = pd.concat([summary_export, gt], ignore_index=True)
             else:
                 summary_export = summary_df.copy()
 
-            ws_summary = wb.create_sheet("Summary")
-            style_worksheet(ws_summary, summary_export, header_fill, header_font, border)
+            write_summary(summary_export)
 
-            # Sheet 2: Details with TAT (RO BILL DATE TO CURRENT DATE)
             if source_df is not None and not source_df.empty:
-                if selected_division != 'All':
-                    detail_df = source_df[source_df['Division'] == selected_division].copy()
-                else:
-                    detail_df = source_df.copy()
+                detail_df = source_df[source_df["Division"] == selected_division].copy() if selected_division != "All" else source_df.copy()
 
                 if not detail_df.empty:
                     required_cols = [
-                        'Division', 'RO Id.', 'Registration No.', 'Chassis No.', 'Model Group',
-                        'RO Date', 'RO Bill Date', 'Claim Amount', 'Claim Date',
-                        'Request No.', 'Request Date', 'Request Status',
-                        'Claim Approved Amt.', 'No. of Days'
+                        "Division", "RO Id.", "Registration No.", "Chassis No.", "Model Group",
+                        "RO Date", "RO Bill Date", "Claim Amount", "Claim Date",
+                        "Request No.", "Request Date", "Request Status",
+                        "Claim Approved Amt.", "No. of Days",
                     ]
-                    available_cols = [col for col in required_cols if col in detail_df.columns]
+                    available_cols = [c for c in required_cols if c in detail_df.columns]
                     detail_df = detail_df[available_cols].copy()
 
-                    if 'RO Bill Date' in detail_df.columns:
+                    if "RO Bill Date" in detail_df.columns:
                         def calculate_tat_from_bill(bill_date):
                             try:
                                 if pd.isna(bill_date):
                                     return 0
-                                bill_dt = pd.to_datetime(bill_date, errors='coerce')
+                                bill_dt = pd.to_datetime(bill_date, errors="coerce")
                                 if pd.isna(bill_dt):
                                     return 0
                                 tat = (datetime.now().date() - bill_dt.date()).days
                                 return max(0, tat)
-                            except:
+                            except Exception:
                                 return 0
 
-                        if 'No. of Days' in detail_df.columns:
-                            detail_df['No. of Days'] = detail_df['RO Bill Date'].apply(calculate_tat_from_bill)
+                        if "No. of Days" in detail_df.columns:
+                            detail_df["No. of Days"] = detail_df["RO Bill Date"].apply(calculate_tat_from_bill)
 
-                    date_columns = ['RO Date', 'RO Bill Date', 'Claim Date', 'Request Date']
-                    for col in date_columns:
+                    for col in ["RO Date", "RO Bill Date", "Claim Date", "Request Date"]:
                         if col in detail_df.columns:
-                            detail_df[col] = pd.to_datetime(detail_df[col], errors='coerce')
+                            detail_df[col] = pd.to_datetime(detail_df[col], errors="coerce")
 
-                    if 'Request Date' in detail_df.columns:
-                        detail_df = detail_df.sort_values('Request Date', ascending=False, na_position='last')
+                    if "Request Date" in detail_df.columns:
+                        detail_df = detail_df.sort_values("Request Date", ascending=False, na_position="last")
 
                     ws_details = wb.create_sheet("Details")
                     style_worksheet(ws_details, detail_df, header_fill, header_font, border)
 
-        # ============ PR APPROVAL (SUMMARY + DETAILS) ============
-        elif export_type == 'pr_approval':
-            df = WARRANTY_DATA['pr_approval_df']
-            source_df = WARRANTY_DATA['pr_approval_source_df']
+        # ============ PR APPROVAL ============
+        elif export_type == "pr_approval":
+            df = WARRANTY_DATA["pr_approval_df"]
+            source_df = WARRANTY_DATA["pr_approval_source_df"]
 
             if df is None or df.empty:
-                raise HTTPException(status_code=500, detail="No data")
+                raise HTTPException(status_code=500, detail="No PR Approval data")
 
-            # Sheet 1: Summary
-            if selected_division != 'All':
-                df_export = df[df['Division'] == selected_division].copy()
-                gt = df[df['Division'] == 'Grand Total']
+            if selected_division != "All":
+                df_export = df[df["Division"] == selected_division].copy()
+                gt = df[df["Division"] == "Grand Total"]
                 if not gt.empty:
                     df_export = pd.concat([df_export, gt], ignore_index=True)
             else:
                 df_export = df.copy()
 
-            ws1 = wb.create_sheet("Summary")
-            style_worksheet(ws1, df_export, header_fill, header_font, border)
+            write_summary(df_export)
 
-            # Sheet 2: Details (ALL COLUMNS)
             if source_df is not None and not source_df.empty:
-                if selected_division != 'All':
-                    detail_df = source_df[source_df['Division'] == selected_division].copy()
-                else:
-                    detail_df = source_df.copy()
-
+                detail_df = source_df[source_df["Division"] == selected_division].copy() if selected_division != "All" else source_df.copy()
                 if not detail_df.empty:
                     ws2 = wb.create_sheet("Details")
                     style_worksheet(ws2, detail_df, header_fill, header_font, border)
@@ -980,26 +1001,33 @@ async def export_to_excel(request: Request):
         else:
             raise HTTPException(status_code=400, detail="Invalid export type")
 
-        # Save
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
+        # Save to bytes (reliable behind Render/proxy)
+        buf = io.BytesIO()
+        wb.save(buf)
+        xlsx_bytes = buf.getvalue()
+
+        if not xlsx_bytes or len(xlsx_bytes) < 1000:
+            raise HTTPException(status_code=500, detail="Generated Excel is empty/too small")
 
         filename = f"{selected_division}_{export_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        print(f" Export ready: {filename}\n")
+        print(f"Export ready: {filename} size={len(xlsx_bytes)} bytes\n")
 
-        return StreamingResponse(
-            iter([output.getvalue()]),
+        return Response(
+            content=xlsx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-store",
+            },
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f" Error: {e}")
+        print(f"Export error: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return as plain text so JS can show it
+        return Response(content=f"Export failed: {str(e)}", status_code=500, media_type="text/plain")
 
 
 @app.get("/")
@@ -1007,36 +1035,20 @@ async def root():
     return HTMLResponse(content=DASHBOARD_HTML)
 
 
-# ==================== STARTUP ====================
-
-print("Processing warranty data...\n")
-print("1. Processing Warranty Debit...")
-WARRANTY_DATA['credit_df'], WARRANTY_DATA['debit_df'], WARRANTY_DATA['arbitration_df'], WARRANTY_DATA['source_df'] = process_warranty_data()
-
-print("2. Processing Current Month...")
-WARRANTY_DATA['current_month_df'], WARRANTY_DATA['current_month_source_df'] = process_current_month_warranty()
-
-print("3. Processing Compensation...")
-WARRANTY_DATA['compensation_df'], WARRANTY_DATA['compensation_source_df'] = process_compensation_claim()
-
-print("4. Processing PR Approval...")
-WARRANTY_DATA['pr_approval_df'], WARRANTY_DATA['pr_approval_source_df'] = process_pr_approval()
-
-
 if __name__ == "__main__":
-    port = int(os.getenv('PORT', 8001))
+    port = int(os.getenv("PORT", "8001"))
 
-    print("\n" + "="*100)
-    print(" READY - WARRANTY MANAGEMENT SYSTEM")
-    print("="*100)
+    print("\n" + "=" * 100)
+    print("READY - WARRANTY MANAGEMENT SYSTEM")
+    print("=" * 100)
     print(f"Access: http://localhost:{port}")
     print("\nEXPORT OPTIONS:")
-    print("   Credit (Summary)")
-    print("   Debit (Summary)")
-    print("   Arbitration (Month-wise Summary + Arbitration Updated + Arbitration Not Updated)")
-    print("   Current Month (Summary + Spares Details + Labour Details)")
-    print("   Compensation (Summary + Details with TAT from RO Bill Date)")
-    print("   PR Approval (Summary + Details)")
-    print("="*100 + "\n")
+    print("  Credit (Summary)")
+    print("  Debit (Summary)")
+    print("  Arbitration (Summary + Arbitration Updated + Arbitration Not Updated)")
+    print("  Current Month (Summary + Spares Details + Labour Details)")
+    print("  Compensation (Summary + Details with TAT from RO Bill Date)")
+    print("  PR Approval (Summary + Details)")
+    print("=" * 100 + "\n")
 
     uvicorn.run(app, host="0.0.0.0", port=port)
