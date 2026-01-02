@@ -733,6 +733,7 @@ DASHBOARD_HTML = """
       font-weight: 700;
       color: var(--text-dark);
       min-width: 100px;
+      /* Mobile: NO sticky - scrolls naturally */
     }
 
     @media (min-width: 768px) {
