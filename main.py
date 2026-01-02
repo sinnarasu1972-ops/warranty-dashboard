@@ -733,18 +733,25 @@ DASHBOARD_HTML = """
       font-weight: 700;
       color: var(--text-dark);
       min-width: 100px;
-      position: sticky;
-      left: 0;
-      background: #fff;
-      z-index: 9;
+    }
+
+    @media (min-width: 768px) {
+      .data-table tbody td:first-child {
+        position: sticky;
+        left: 0;
+        background: #fff;
+        z-index: 9;
+      }
     }
 
     .data-table tbody tr:hover {
       background: var(--bg-light);
     }
 
-    .data-table tbody tr:hover td:first-child {
-      background: var(--bg-light);
+    @media (min-width: 768px) {
+      .data-table tbody tr:hover td:first-child {
+        background: var(--bg-light);
+      }
     }
 
     .data-table tbody tr:last-child {
@@ -761,6 +768,15 @@ DASHBOARD_HTML = """
 
     .data-table tbody tr:last-child td:first-child {
       background: var(--bg-orange-light);
+    }
+
+    @media (min-width: 768px) {
+      .data-table tbody tr:last-child td:first-child {
+        background: var(--bg-orange-light);
+        position: sticky;
+        left: 0;
+        z-index: 9;
+      }
     }
 
     /* ===== EXPORT SECTION ===== */
